@@ -39,9 +39,54 @@ def safe_stop_image_writer(func):
 
 
 def image_array_to_pil_image(image_array: np.ndarray, range_check: bool = True) -> PIL.Image.Image:
-    # TODO(aliberts): handle 1 channel and 4 for depth images
+    if image_array.ndim == 2:
+        # 2D array: grayscale or depth image (H, W)
+        if image_array.dtype == np.uint16:
+            # 16-bit depth data - preserve full precision
+            return PIL.Image.fromarray(image_array, mode="I;16")
+        elif image_array.dtype == np.uint8:
+            return PIL.Image.fromarray(image_array, mode="L")
+        elif image_array.dtype in [np.float32, np.float64]:
+            if range_check:
+                max_ = image_array.max().item()
+                min_ = image_array.min().item()
+                if max_ > 1.0 or min_ < 0.0:
+                    raise ValueError(
+                        "The image data type is float, which requires values in the range [0.0, 1.0]. "
+                        f"However, the provided range is [{min_}, {max_}]. Please adjust the range or "
+                        "provide a uint8 image with values in the range [0, 255]."
+                    )
+            image_array = (image_array * 255).astype(np.uint8)
+            return PIL.Image.fromarray(image_array, mode="L")
+        else:
+            raise ValueError(f"Unsupported dtype {image_array.dtype} for 2D image array.")
+
     if image_array.ndim != 3:
-        raise ValueError(f"The array has {image_array.ndim} dimensions, but 3 is expected for an image.")
+        raise ValueError(f"The array has {image_array.ndim} dimensions, but 2 or 3 is expected for an image.")
+
+    # Handle single-channel images (H, W, 1) - typically depth data
+    if image_array.shape[-1] == 1:
+        # Squeeze the channel dimension and handle as 2D
+        image_array_2d = image_array[:, :, 0]
+        if image_array_2d.dtype == np.uint16:
+            # 16-bit depth data - preserve full precision
+            return PIL.Image.fromarray(image_array_2d, mode="I;16")
+        elif image_array_2d.dtype == np.uint8:
+            return PIL.Image.fromarray(image_array_2d, mode="L")
+        elif image_array_2d.dtype in [np.float32, np.float64]:
+            if range_check:
+                max_ = image_array_2d.max().item()
+                min_ = image_array_2d.min().item()
+                if max_ > 1.0 or min_ < 0.0:
+                    raise ValueError(
+                        "The image data type is float, which requires values in the range [0.0, 1.0]. "
+                        f"However, the provided range is [{min_}, {max_}]. Please adjust the range or "
+                        "provide a uint8 image with values in the range [0, 255]."
+                    )
+            image_array_2d = (image_array_2d * 255).astype(np.uint8)
+            return PIL.Image.fromarray(image_array_2d, mode="L")
+        else:
+            raise ValueError(f"Unsupported dtype {image_array_2d.dtype} for single-channel image.")
 
     if image_array.shape[0] == 3:
         # Transpose from pytorch convention (C, H, W) to (H, W, C)
@@ -49,7 +94,7 @@ def image_array_to_pil_image(image_array: np.ndarray, range_check: bool = True) 
 
     elif image_array.shape[-1] != 3:
         raise NotImplementedError(
-            f"The image has {image_array.shape[-1]} channels, but 3 is required for now."
+            f"The image has {image_array.shape[-1]} channels, but 1 or 3 is required."
         )
 
     if image_array.dtype != np.uint8:

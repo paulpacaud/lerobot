@@ -656,11 +656,24 @@ def hw_to_dataset_features(
         }
 
     for key, shape in cam_fts.items():
-        features[f"{prefix}.images.{key}"] = {
-            "dtype": "video" if use_video else "image",
-            "shape": shape,
-            "names": ["height", "width", "channels"],
-        }
+        # Detect depth features by name suffix or single channel
+        # Depth features are stored as images (not video) to preserve 16-bit precision
+        is_depth = key.endswith("_depth") or (len(shape) == 3 and shape[2] == 1)
+        if is_depth:
+            # Depth features: store as image to preserve 16-bit precision
+            features[f"{prefix}.images.{key}"] = {
+                "dtype": "image",
+                "shape": shape,
+                "names": ["height", "width", "channels"],
+                "info": {"is_depth_map": True},
+            }
+        else:
+            # Regular camera features
+            features[f"{prefix}.images.{key}"] = {
+                "dtype": "video" if use_video else "image",
+                "shape": shape,
+                "names": ["height", "width", "channels"],
+            }
 
     _validate_feature_names(features)
     return features

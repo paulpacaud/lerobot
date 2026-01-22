@@ -74,9 +74,15 @@ class BiSO100Follower(Robot):
 
     @property
     def _cameras_ft(self) -> dict[str, tuple]:
-        return {
-            cam: (self.config.cameras[cam].height, self.config.cameras[cam].width, 3) for cam in self.cameras
-        }
+        features = {}
+        for cam in self.cameras:
+            cam_cfg = self.config.cameras[cam]
+            # Add color image feature (height, width, 3)
+            features[cam] = (cam_cfg.height, cam_cfg.width, 3)
+            # Add depth feature if depth is enabled for this camera (height, width, 1)
+            if hasattr(cam_cfg, "use_depth") and cam_cfg.use_depth:
+                features[f"{cam}_depth"] = (cam_cfg.height, cam_cfg.width, 1)
+        return features
 
     @cached_property
     def observation_features(self) -> dict[str, type | tuple]:
@@ -133,6 +139,16 @@ class BiSO100Follower(Robot):
             obs_dict[cam_key] = cam.async_read()
             dt_ms = (time.perf_counter() - start) * 1e3
             logger.debug(f"{self} read {cam_key}: {dt_ms:.1f}ms")
+
+            # Capture depth if enabled for this camera
+            cam_cfg = self.config.cameras[cam_key]
+            if hasattr(cam_cfg, "use_depth") and cam_cfg.use_depth:
+                start = time.perf_counter()
+                depth_frame = cam.async_read_depth()
+                # Add channel dimension to depth frame (H, W) -> (H, W, 1) for consistency
+                obs_dict[f"{cam_key}_depth"] = depth_frame[:, :, None]
+                dt_ms = (time.perf_counter() - start) * 1e3
+                logger.debug(f"{self} read {cam_key}_depth: {dt_ms:.1f}ms")
 
         return obs_dict
 

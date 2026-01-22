@@ -1479,7 +1479,9 @@ class LeRobotDataset(torch.utils.data.Dataset):
         return metadata
 
     def clear_episode_buffer(self, delete_images: bool = True) -> None:
-        # Clean up image files for the current episode buffer
+        # Clean up temporary image files for the current episode buffer
+        # Only delete images for VIDEO features (which get encoded to video files)
+        # Keep images for IMAGE features (like depth maps) as they are the final storage format
         if delete_images:
             # Wait for the async image writer to finish
             if self.image_writer is not None:
@@ -1487,8 +1489,9 @@ class LeRobotDataset(torch.utils.data.Dataset):
             episode_index = self.episode_buffer["episode_index"]
             if isinstance(episode_index, np.ndarray):
                 episode_index = episode_index.item() if episode_index.size == 1 else episode_index[0]
-            for cam_key in self.meta.camera_keys:
-                img_dir = self._get_image_file_dir(episode_index, cam_key)
+            # Only delete temporary images for video features, not permanent image features
+            for video_key in self.meta.video_keys:
+                img_dir = self._get_image_file_dir(episode_index, video_key)
                 if img_dir.is_dir():
                     shutil.rmtree(img_dir)
 
