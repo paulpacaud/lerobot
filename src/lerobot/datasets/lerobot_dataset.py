@@ -1138,7 +1138,15 @@ class LeRobotDataset(torch.utils.data.Dataset):
                 if frame_index == 0:
                     img_path.parent.mkdir(parents=True, exist_ok=True)
                 compress_level = 1 if self.features[key]["dtype"] == "video" else 6
-                self._save_image(frame[key], img_path, compress_level)
+
+                # Handle depth maps: convert float meters to uint16 millimeters for storage
+                image_data = frame[key]
+                is_depth_map = self.features[key].get("info", {}).get("is_depth_map", False)
+                if is_depth_map and image_data.dtype in [np.float32, np.float64]:
+                    # Convert from meters to millimeters and cast to uint16
+                    image_data = (image_data * 1000.0).astype(np.uint16)
+
+                self._save_image(image_data, img_path, compress_level)
                 self.episode_buffer[key].append(str(img_path))
             else:
                 self.episode_buffer[key].append(frame[key])
