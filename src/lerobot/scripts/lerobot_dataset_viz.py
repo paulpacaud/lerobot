@@ -135,10 +135,14 @@ def visualize_dataset(
             rr.set_time("frame_index", sequence=batch["frame_index"][i].item())
             rr.set_time("timestamp", timestamp=batch["timestamp"][i].item())
 
-            # display each camera image
+            # display each camera image (skip depth images)
             for key in dataset.meta.camera_keys:
+                img_tensor = batch[key][i]
+                # Skip depth images (single channel with non-RGB values)
+                if img_tensor.shape[0] == 1:
+                    continue
                 # TODO(rcadene): add `.compress()`? is it lossless?
-                rr.log(key, rr.Image(to_hwc_uint8_numpy(batch[key][i])))
+                rr.log(key, rr.Image(to_hwc_uint8_numpy(img_tensor)))
 
             # display each dimension of action space (e.g. actuators command)
             if ACTION in batch:

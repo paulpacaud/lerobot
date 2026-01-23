@@ -138,6 +138,13 @@ class RealSenseCamera(Camera):
         self.latest_depth_frame: NDArray[Any] | None = None
         self.new_frame_event: Event = Event()
 
+        # Debug counters for tracking sync
+        self._capture_count: int = 0
+        self._last_color_ts: float = 0
+        self._last_depth_ts: float = 0
+        self._last_depth_mean: float = 0
+        self._read_count: int = 0
+
         self.rotation: int | None = get_cv2_rotation(config.rotation)
 
         if self.height and self.width:
@@ -362,7 +369,8 @@ class RealSenseCamera(Camera):
             frameset = self.rs_align.process(frameset)
 
         depth_frame = frameset.get_depth_frame()
-        depth_map = np.asanyarray(depth_frame.get_data())
+        # Make a copy to avoid reference issues with RealSense internal buffer
+        depth_map = np.asanyarray(depth_frame.get_data()).copy()
 
         depth_map_processed = self._postprocess_image(depth_map, depth_frame=True)
 
@@ -411,23 +419,97 @@ class RealSenseCamera(Camera):
         if not ret or frameset is None:
             raise RuntimeError(f"{self} read_color_and_depth failed (status={ret}).")
 
+        # Extract color and depth frames BEFORE alignment to check timestamps
+        color_frame = frameset.get_color_frame()
+        depth_frame = frameset.get_depth_frame()
+
+        # Check frame synchronization using hardware timestamps
+        color_ts = color_frame.get_timestamp()
+        depth_ts = depth_frame.get_timestamp()
+        ts_diff_ms = abs(color_ts - depth_ts)
+
+        # Also check frame numbers for additional sync verification
+        color_frame_num = color_frame.get_frame_number()
+        depth_frame_num = depth_frame.get_frame_number()
+
+        # If frames are significantly desynchronized (>33ms = 1 frame at 30fps), retry
+        max_sync_retries = 3
+        retry_count = 0
+        while ts_diff_ms > 33.0 and retry_count < max_sync_retries:
+            logger.warning(
+                f"{self} color/depth desync detected (diff={ts_diff_ms:.1f}ms), retrying... "
+                f"(attempt {retry_count + 1}/{max_sync_retries})"
+            )
+            # Get a fresh frameset
+            ret, frameset = self.rs_pipeline.try_wait_for_frames(timeout_ms=timeout_ms)
+            if not ret or frameset is None:
+                break
+            color_frame = frameset.get_color_frame()
+            depth_frame = frameset.get_depth_frame()
+            color_ts = color_frame.get_timestamp()
+            depth_ts = depth_frame.get_timestamp()
+            ts_diff_ms = abs(color_ts - depth_ts)
+            color_frame_num = color_frame.get_frame_number()
+            depth_frame_num = depth_frame.get_frame_number()
+            retry_count += 1
+
+        # Log warning if frames still appear desynchronized after retries
+        if ts_diff_ms > 33.0:
+            logger.warning(
+                f"{self} color/depth still desync after {max_sync_retries} retries: "
+                f"color_ts={color_ts:.1f}ms, depth_ts={depth_ts:.1f}ms, diff={ts_diff_ms:.1f}ms"
+            )
+        if abs(color_frame_num - depth_frame_num) > 1:
+            logger.debug(
+                f"{self} color/depth frame numbers: color={color_frame_num}, depth={depth_frame_num}"
+            )
+
+        # Track timestamps for debugging
+        self._capture_count += 1
+        self._last_color_ts = color_ts
+        self._last_depth_ts = depth_ts
+
         # Align depth to color frame so depth pixels correspond to color pixels
         # This allows using color camera intrinsics for accurate 3D reconstruction
         if self.rs_align is not None:
-            frameset = self.rs_align.process(frameset)
+            aligned_frameset = self.rs_align.process(frameset)
+            # Re-extract depth frame after alignment
+            aligned_depth_frame = aligned_frameset.get_depth_frame()
 
-        # Extract color frame
-        color_frame = frameset.get_color_frame()
-        color_image_raw = np.asanyarray(color_frame.get_data())
+            # Verify alignment didn't change frame pairing
+            aligned_depth_frame_num = aligned_depth_frame.get_frame_number()
+            if aligned_depth_frame_num != depth_frame_num:
+                logger.warning(
+                    f"{self} alignment changed depth frame number: {depth_frame_num} -> {aligned_depth_frame_num}"
+                )
+
+            depth_frame = aligned_depth_frame
+
+        # IMPORTANT: Make copies of the frame data to avoid reference issues
+        # The underlying buffer may be reused by the RealSense SDK
+        color_image_raw = np.asanyarray(color_frame.get_data()).copy()
         color_image_processed = self._postprocess_image(color_image_raw, color_mode)
 
-        # Extract depth frame (now aligned to color camera viewpoint)
-        depth_frame = frameset.get_depth_frame()
-        depth_map = np.asanyarray(depth_frame.get_data())
+        depth_map = np.asanyarray(depth_frame.get_data()).copy()
         depth_map_processed = self._postprocess_image(depth_map, depth_frame=True)
+
+        # Store depth mean for debugging
+        valid_depth = depth_map_processed[depth_map_processed > 0]
+        self._last_depth_mean = valid_depth.mean() if len(valid_depth) > 0 else 0
 
         read_duration_ms = (time.perf_counter() - start_time) * 1e3
         logger.debug(f"{self} read_color_and_depth took: {read_duration_ms:.1f}ms")
+
+        # Debug: log depth statistics every 30 frames
+        if self._capture_count % 30 == 0:
+            valid_depth = depth_map_processed[depth_map_processed > 0]
+            if len(valid_depth) > 0:
+                depth_mean = valid_depth.mean()
+                logger.info(
+                    f"{self} capture #{self._capture_count}: ts_diff={ts_diff_ms:.1f}ms, "
+                    f"color_frame={color_frame_num}, depth_frame={depth_frame_num}, "
+                    f"depth_mean={depth_mean:.0f}mm"
+                )
 
         return color_image_processed, depth_map_processed
 
@@ -465,7 +547,8 @@ class RealSenseCamera(Camera):
             raise RuntimeError(f"{self} read failed (status={ret}).")
 
         color_frame = frame.get_color_frame()
-        color_image_raw = np.asanyarray(color_frame.get_data())
+        # Make a copy to avoid reference issues with RealSense internal buffer
+        color_image_raw = np.asanyarray(color_frame.get_data()).copy()
 
         color_image_processed = self._postprocess_image(color_image_raw, color_mode)
 
@@ -535,6 +618,9 @@ class RealSenseCamera(Camera):
         if self.stop_event is None:
             raise RuntimeError(f"{self}: stop_event is not initialized before starting read loop.")
 
+        consecutive_errors = 0
+        max_consecutive_errors = 10
+
         while not self.stop_event.is_set():
             try:
                 if self.use_depth:
@@ -549,11 +635,18 @@ class RealSenseCamera(Camera):
                         self.latest_frame = color_image
 
                 self.new_frame_event.set()
+                consecutive_errors = 0  # Reset error counter on success
 
             except DeviceNotConnectedError:
                 break
             except Exception as e:
+                consecutive_errors += 1
                 logger.warning(f"Error reading frame in background thread for {self}: {e}")
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error(f"{self}: Too many consecutive errors ({consecutive_errors}), stopping read loop")
+                    break
+                # Small delay before retry to avoid spinning on persistent errors
+                time.sleep(0.01)
 
     def _start_read_thread(self) -> None:
         """Starts or restarts the background read thread if it's not running."""
@@ -672,6 +765,79 @@ class RealSenseCamera(Camera):
             raise RuntimeError(f"Internal error: Event set but no depth frame available for {self}.")
 
         return depth_frame
+
+    def async_read_color_and_depth(self, timeout_ms: float = 200) -> tuple[NDArray[Any], NDArray[Any]]:
+        """
+        Reads both color and depth frames asynchronously from the same capture instant.
+
+        This method ensures that color and depth are from the same synchronized frameset,
+        avoiding race conditions that can occur when calling async_read() and async_read_depth()
+        separately.
+
+        Args:
+            timeout_ms (float): Maximum time in milliseconds to wait for frames
+                to become available. Defaults to 200ms (0.2 seconds).
+
+        Returns:
+            tuple: (color_image, depth_map) where:
+                - color_image: np.ndarray (height, width, 3) with uint8 dtype
+                - depth_map: np.ndarray (height, width) with uint16 dtype (millimeters)
+
+        Raises:
+            DeviceNotConnectedError: If the camera is not connected.
+            RuntimeError: If depth stream is not enabled or an error occurs.
+            TimeoutError: If no frame data becomes available within the specified timeout.
+        """
+        if not self.is_connected:
+            raise DeviceNotConnectedError(f"{self} is not connected.")
+        if not self.use_depth:
+            raise RuntimeError(
+                f"Failed to capture depth frame. Depth stream is not enabled for {self}."
+            )
+
+        if self.thread is None or not self.thread.is_alive():
+            self._start_read_thread()
+
+        if not self.new_frame_event.wait(timeout=timeout_ms / 1000.0):
+            thread_alive = self.thread is not None and self.thread.is_alive()
+            raise TimeoutError(
+                f"Timed out waiting for frames from camera {self} after {timeout_ms} ms. "
+                f"Read thread alive: {thread_alive}."
+            )
+
+        with self.frame_lock:
+            color_frame = self.latest_frame
+            depth_frame = self.latest_depth_frame
+            capture_count = self._capture_count
+            captured_depth_mean = self._last_depth_mean
+            self.new_frame_event.clear()
+
+        if color_frame is None:
+            raise RuntimeError(f"Internal error: Event set but no color frame available for {self}.")
+        if depth_frame is None:
+            raise RuntimeError(f"Internal error: Event set but no depth frame available for {self}.")
+
+        # Verify depth data matches what was captured
+        self._read_count += 1
+        valid_depth = depth_frame[depth_frame > 0]
+        read_depth_mean = valid_depth.mean() if len(valid_depth) > 0 else 0
+
+        # Log every 30 reads for debugging
+        if self._read_count % 30 == 0:
+            logger.info(
+                f"{self} read #{self._read_count}: capture_count={capture_count}, "
+                f"captured_depth_mean={captured_depth_mean:.0f}mm, read_depth_mean={read_depth_mean:.0f}mm"
+            )
+
+        # Warn if there's a large discrepancy (suggests buffer corruption)
+        if abs(read_depth_mean - captured_depth_mean) > 50:
+            logger.warning(
+                f"{self} DEPTH MISMATCH! read #{self._read_count}: "
+                f"captured={captured_depth_mean:.0f}mm vs read={read_depth_mean:.0f}mm "
+                f"(diff={abs(read_depth_mean - captured_depth_mean):.0f}mm)"
+            )
+
+        return color_frame, depth_frame
 
     def disconnect(self) -> None:
         """

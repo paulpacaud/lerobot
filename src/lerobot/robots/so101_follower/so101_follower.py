@@ -19,6 +19,8 @@ import time
 from functools import cached_property
 from typing import Any
 
+import numpy as np
+
 from lerobot.cameras.utils import make_cameras_from_configs
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
 from lerobot.motors.feetech import (
@@ -189,20 +191,31 @@ class SO101Follower(Robot):
 
         # Capture images from cameras
         for cam_key, cam in self.cameras.items():
-            start = time.perf_counter()
-            obs_dict[cam_key] = cam.async_read()
-            dt_ms = (time.perf_counter() - start) * 1e3
-            logger.debug(f"{self} read {cam_key}: {dt_ms:.1f}ms")
-
-            # Capture depth if enabled for this camera
             cam_cfg = self.config.cameras[cam_key]
-            if hasattr(cam_cfg, "use_depth") and cam_cfg.use_depth:
-                start = time.perf_counter()
-                depth_frame = cam.async_read_depth()
-                # Add channel dimension to depth frame (H, W) -> (H, W, 1) for consistency
+            use_depth = hasattr(cam_cfg, "use_depth") and cam_cfg.use_depth
+
+            start = time.perf_counter()
+            if use_depth and hasattr(cam, "async_read_color_and_depth"):
+                # Read color and depth together to ensure they're from the same frame
+                color_frame, depth_frame = cam.async_read_color_and_depth()
+                obs_dict[cam_key] = color_frame
+                # Keep depth as uint16 millimeters and add channel dimension (H, W) -> (H, W, 1)
                 obs_dict[f"{cam_key}_depth"] = depth_frame[:, :, None]
                 dt_ms = (time.perf_counter() - start) * 1e3
-                logger.debug(f"{self} read {cam_key}_depth: {dt_ms:.1f}ms")
+                logger.debug(f"{self} read {cam_key} + depth: {dt_ms:.1f}ms")
+            else:
+                obs_dict[cam_key] = cam.async_read()
+                dt_ms = (time.perf_counter() - start) * 1e3
+                logger.debug(f"{self} read {cam_key}: {dt_ms:.1f}ms")
+
+                # Capture depth separately if enabled but camera doesn't have combined method
+                if use_depth:
+                    start = time.perf_counter()
+                    depth_frame = cam.async_read_depth()  # uint16 in millimeters
+                    # Keep depth as uint16 millimeters and add channel dimension (H, W) -> (H, W, 1)
+                    obs_dict[f"{cam_key}_depth"] = depth_frame[:, :, None]
+                    dt_ms = (time.perf_counter() - start) * 1e3
+                    logger.debug(f"{self} read {cam_key}_depth: {dt_ms:.1f}ms")
 
         return obs_dict
 

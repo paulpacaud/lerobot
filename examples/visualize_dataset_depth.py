@@ -26,7 +26,7 @@ Usage:
     python examples/visualize_dataset_depth.py --dataset-path /path/to/dataset --pointcloud
 
     # Point cloud with custom depth range (in mm)
-    python examples/visualize_dataset_depth.py --dataset-path /path/to/dataset --pointcloud --max-depth 2000
+    python examples/visualize_dataset_depth.py --dataset-path /path/to/dataset --pointcloud --max-depth 800
 
     # Point cloud in camera frame only (skip extrinsics)
     python examples/visualize_dataset_depth.py --dataset-path /path/to/dataset --pointcloud --camera-frame
@@ -190,6 +190,42 @@ def load_extrinsics(extrinsics_path: Path | None) -> dict | None:
     }
 
 
+def get_episode_start_index(dataset_path: Path, episode_idx: int) -> int:
+    """Get the global starting frame index for an episode.
+
+    Args:
+        dataset_path: Path to the dataset
+        episode_idx: Episode index
+
+    Returns:
+        Global frame index where this episode starts in the video
+    """
+    import pandas as pd
+
+    # Try loading episode metadata
+    episodes_dir = dataset_path / "meta" / "episodes"
+    if episodes_dir.exists():
+        for chunk_dir in sorted(episodes_dir.glob("chunk-*")):
+            for parquet_file in sorted(chunk_dir.glob("file-*.parquet")):
+                df = pd.read_parquet(parquet_file)
+                if "episode_index" in df.columns and "dataset_from_index" in df.columns:
+                    mask = df["episode_index"] == episode_idx
+                    if mask.any():
+                        return int(df[mask]["dataset_from_index"].iloc[0])
+
+    # Fallback: compute from data parquet files
+    data_dir = dataset_path / "data"
+    if data_dir.exists():
+        for chunk_dir in sorted(data_dir.glob("chunk-*")):
+            for parquet_file in sorted(chunk_dir.glob("file-*.parquet")):
+                df = pd.read_parquet(parquet_file, columns=["episode_index", "index"])
+                mask = df["episode_index"] == episode_idx
+                if mask.any():
+                    return int(df[mask]["index"].min())
+
+    return 0
+
+
 def load_rgb_frame(dataset_path: Path, video_key: str, episode_idx: int, frame_idx: int) -> np.ndarray | None:
     """Load an RGB frame from video or image storage."""
     # Try image storage first
@@ -203,16 +239,18 @@ def load_rgb_frame(dataset_path: Path, video_key: str, episode_idx: int, frame_i
         try:
             import av
             container = av.open(str(video_path))
-            stream = container.streams.video[0]
 
-            # Seek to approximate frame
-            fps = stream.base_rate
-            timestamp = frame_idx / float(fps)
-            container.seek(int(timestamp * av.time_base))
+            # Get the global frame index by adding episode start offset
+            episode_start = get_episode_start_index(dataset_path, episode_idx)
+            global_frame_idx = episode_start + frame_idx
 
+            # Decode frames sequentially until we reach the target
+            # (seeking in compressed video is approximate, so we count from start)
             for i, frame in enumerate(container.decode(video=0)):
-                if i >= frame_idx:
-                    return frame.to_ndarray(format='rgb24')
+                if i == global_frame_idx:
+                    result = frame.to_ndarray(format='rgb24')
+                    container.close()
+                    return result
             container.close()
         except Exception as e:
             print(f"Warning: Could not decode video frame: {e}")
@@ -220,22 +258,91 @@ def load_rgb_frame(dataset_path: Path, video_key: str, episode_idx: int, frame_i
     return None
 
 
-def load_depth_frame(dataset_path: Path, depth_key: str, episode_idx: int, frame_idx: int) -> np.ndarray | None:
-    """Load a depth frame from image storage."""
+def load_depth_frame(dataset_path: Path, depth_key: str, episode_idx: int, frame_idx: int,
+                      info: dict | None = None) -> np.ndarray | None:
+    """Load a depth frame from parquet files or image storage.
+
+    Args:
+        dataset_path: Path to the dataset
+        depth_key: Key for the depth feature (e.g., 'observation.images.front_depth')
+        episode_idx: Episode index
+        frame_idx: Frame index within the episode
+        info: Dataset info dict (optional, used for parquet loading)
+
+    Returns:
+        Depth image as uint16 numpy array in millimeters, or None if not found
+    """
+    # Try loading from parquet files first (authoritative source)
+    # The images folder may have stale/extra files from recording
+    try:
+        import pandas as pd
+        import io
+
+        # Find parquet files with the depth data
+        data_dir = dataset_path / "data"
+        if data_dir.exists():
+            # Load info if not provided to get data path pattern
+            if info is None:
+                info = load_dataset_info(dataset_path)
+
+            # Find the correct parquet file by iterating through chunks
+            for chunk_dir in sorted(data_dir.glob("chunk-*")):
+                for parquet_file in sorted(chunk_dir.glob("file-*.parquet")):
+                    df = pd.read_parquet(parquet_file)
+
+                    # Filter for the correct episode and frame
+                    mask = (df["episode_index"] == episode_idx) & (df["frame_index"] == frame_idx)
+                    if mask.any():
+                        row = df[mask].iloc[0]
+                        depth_data = row[depth_key]
+
+                        # Handle dict format with 'bytes' key (PNG encoded)
+                        if isinstance(depth_data, dict) and "bytes" in depth_data:
+                            png_bytes = depth_data["bytes"]
+                            img = Image.open(io.BytesIO(png_bytes))
+                            return np.array(img, dtype=np.uint16)
+                        # Handle direct numpy array
+                        elif isinstance(depth_data, np.ndarray):
+                            return depth_data.astype(np.uint16)
+
+    except Exception as e:
+        print(f"Warning: Could not load depth from parquet: {e}")
+
+    # Fallback: try image storage (images/ folder)
+    # Note: images folder may have stale files if recording was interrupted
     img_path = dataset_path / "images" / depth_key / f"episode-{episode_idx:06d}" / f"frame-{frame_idx:06d}.png"
     if img_path.exists():
         img = Image.open(img_path)
         return np.array(img, dtype=np.uint16)
+
     return None
 
 
-def get_frame_count(dataset_path: Path, image_key: str, episode_idx: int) -> int:
+def get_frame_count(dataset_path: Path, image_key: str, episode_idx: int, info: dict | None = None) -> int:
     """Get the number of frames in an episode for a given image key."""
+    # Try to get from parquet files first (authoritative source)
+    try:
+        import pandas as pd
+        data_dir = dataset_path / "data"
+        if data_dir.exists():
+            for chunk_dir in sorted(data_dir.glob("chunk-*")):
+                for parquet_file in sorted(chunk_dir.glob("file-*.parquet")):
+                    df = pd.read_parquet(parquet_file, columns=["episode_index"])
+                    mask = df["episode_index"] == episode_idx
+                    if mask.any():
+                        return int(mask.sum())
+    except Exception:
+        pass
+
+    # Fallback: try images folder (may have stale files)
     img_dir = dataset_path / "images" / image_key / f"episode-{episode_idx:06d}"
     if img_dir.exists():
         return len(list(img_dir.glob("*.png")))
 
-    # For video, use dataset info
+    # Last fallback: use dataset info
+    if info is not None:
+        return info.get("total_frames", 0)
+
     return 0
 
 
@@ -623,21 +730,25 @@ def print_dataset_summary(dataset_path: Path, info: dict, rgb_keys: list, depth_
 
 
 def analyze_depth_quality(dataset_path: Path, depth_key: str, episode_idx: int,
-                          sample_frames: int = 10) -> None:
+                          sample_frames: int = 10, info: dict | None = None) -> None:
     """Analyze depth quality across multiple frames."""
     print(f"\nAnalyzing depth quality for episode {episode_idx}...")
 
-    # Find all depth frames
+    # First try images folder
     depth_dir = dataset_path / "images" / depth_key / f"episode-{episode_idx:06d}"
-    if not depth_dir.exists():
-        print(f"Depth directory not found: {depth_dir}")
-        return
+    use_images_folder = depth_dir.exists()
 
-    frame_files = sorted(depth_dir.glob("*.png"))
-    total_frames = len(frame_files)
+    if use_images_folder:
+        frame_files = sorted(depth_dir.glob("*.png"))
+        total_frames = len(frame_files)
+    else:
+        # Get frame count from parquet
+        total_frames = get_frame_count(dataset_path, depth_key, episode_idx, info)
+
     print(f"Total depth frames: {total_frames}")
 
     if total_frames == 0:
+        print(f"No depth frames found for episode {episode_idx}")
         return
 
     # Sample frames evenly
@@ -645,11 +756,16 @@ def analyze_depth_quality(dataset_path: Path, depth_key: str, episode_idx: int,
 
     all_stats = []
     for idx in indices:
-        frame_path = frame_files[idx]
-        depth = np.array(Image.open(frame_path), dtype=np.uint16)
-        stats = compute_depth_stats(depth)
-        stats["frame_idx"] = idx
-        all_stats.append(stats)
+        if use_images_folder:
+            frame_path = frame_files[idx]
+            depth = np.array(Image.open(frame_path), dtype=np.uint16)
+        else:
+            depth = load_depth_frame(dataset_path, depth_key, episode_idx, int(idx), info)
+
+        if depth is not None:
+            stats = compute_depth_stats(depth)
+            stats["frame_idx"] = idx
+            all_stats.append(stats)
 
     # Print summary statistics
     print("\nDepth Quality Summary:")
@@ -707,7 +823,7 @@ def interactive_viewer(dataset_path: Path, info: dict, rgb_keys: list, depth_key
 
         # Load and display depth
         if depth_key:
-            depth = load_depth_frame(dataset_path, depth_key, episode_idx, frame_idx)
+            depth = load_depth_frame(dataset_path, depth_key, episode_idx, frame_idx, info)
             if depth is not None:
                 depth_colored = colorize_depth(depth)
                 axes[1].imshow(depth_colored)
@@ -723,7 +839,7 @@ def interactive_viewer(dataset_path: Path, info: dict, rgb_keys: list, depth_key
     def on_key(event):
         nonlocal episode_idx, frame_idx
 
-        max_frames = get_frame_count(dataset_path, depth_key or rgb_key, episode_idx)
+        max_frames = get_frame_count(dataset_path, depth_key or rgb_key, episode_idx, info)
 
         if event.key in ['n', 'right']:
             frame_idx = min(frame_idx + 1, max_frames - 1)
@@ -811,7 +927,7 @@ def main():
     # Analyze depth quality if requested
     if args.analyze:
         for depth_key in depth_keys:
-            analyze_depth_quality(dataset_path, depth_key, args.episode)
+            analyze_depth_quality(dataset_path, depth_key, args.episode, info=info)
 
     # Interactive mode
     if args.interactive:
@@ -825,7 +941,7 @@ def main():
 
         # Load frames
         rgb = load_rgb_frame(dataset_path, rgb_key, args.episode, args.frame) if rgb_key else None
-        depth = load_depth_frame(dataset_path, depth_key, args.episode, args.frame)
+        depth = load_depth_frame(dataset_path, depth_key, args.episode, args.frame, info)
 
         if depth is None:
             print(f"Error: Could not load depth frame {args.frame} from episode {args.episode}")
@@ -917,7 +1033,7 @@ def main():
 
         for frame_idx in frame_indices:
             rgb = load_rgb_frame(dataset_path, rgb_key, args.episode, frame_idx) if rgb_key else None
-            depth = load_depth_frame(dataset_path, depth_key, args.episode, frame_idx) if depth_key else None
+            depth = load_depth_frame(dataset_path, depth_key, args.episode, frame_idx, info) if depth_key else None
             depth_stats = compute_depth_stats(depth) if depth is not None else None
 
             save_path = save_dir / f"episode_{args.episode:03d}_frame_{frame_idx:06d}.png"
@@ -927,7 +1043,7 @@ def main():
     else:
         # Single frame visualization
         rgb = load_rgb_frame(dataset_path, rgb_key, args.episode, args.frame) if rgb_key else None
-        depth = load_depth_frame(dataset_path, depth_key, args.episode, args.frame) if depth_key else None
+        depth = load_depth_frame(dataset_path, depth_key, args.episode, args.frame, info) if depth_key else None
         depth_stats = compute_depth_stats(depth) if depth is not None else None
 
         visualize_frame(rgb, depth, args.episode, args.frame, depth_stats)

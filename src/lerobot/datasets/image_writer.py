@@ -69,22 +69,22 @@ def image_array_to_pil_image(image_array: np.ndarray, range_check: bool = True) 
         # Squeeze the channel dimension and handle as 2D
         image_array_2d = image_array[:, :, 0]
         if image_array_2d.dtype == np.uint16:
-            # 16-bit depth data - preserve full precision
+            # 16-bit depth data in mm - preserve full precision
             return PIL.Image.fromarray(image_array_2d, mode="I;16")
         elif image_array_2d.dtype == np.uint8:
             return PIL.Image.fromarray(image_array_2d, mode="L")
         elif image_array_2d.dtype in [np.float32, np.float64]:
-            if range_check:
-                max_ = image_array_2d.max().item()
-                min_ = image_array_2d.min().item()
-                if max_ > 1.0 or min_ < 0.0:
-                    raise ValueError(
-                        "The image data type is float, which requires values in the range [0.0, 1.0]. "
-                        f"However, the provided range is [{min_}, {max_}]. Please adjust the range or "
-                        "provide a uint8 image with values in the range [0, 255]."
-                    )
-            image_array_2d = (image_array_2d * 255).astype(np.uint8)
-            return PIL.Image.fromarray(image_array_2d, mode="L")
+            max_ = image_array_2d.max().item()
+            min_ = image_array_2d.min().item()
+            # Depth data in meters (values typically > 1.0) - convert to uint16 mm
+            if max_ > 1.0 or min_ < 0.0:
+                # Assume depth in meters, convert to millimeters and save as uint16
+                depth_mm = (image_array_2d * 1000.0).astype(np.uint16)
+                return PIL.Image.fromarray(depth_mm, mode="I;16")
+            else:
+                # Grayscale image in [0, 1] range - convert to uint8
+                image_array_2d = (image_array_2d * 255).astype(np.uint8)
+                return PIL.Image.fromarray(image_array_2d, mode="L")
         else:
             raise ValueError(f"Unsupported dtype {image_array_2d.dtype} for single-channel image.")
 
