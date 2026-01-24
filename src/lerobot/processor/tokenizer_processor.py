@@ -99,7 +99,32 @@ class TokenizerProcessorStep(ObservationProcessorStep):
         elif self.tokenizer_name is not None:
             if AutoTokenizer is None:
                 raise ImportError("AutoTokenizer is not available")
-            self.input_tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name)
+            # Try to load from local cache first (for offline HPC environments)
+            import os
+            from pathlib import Path
+
+            local_files_only = os.environ.get("HF_HUB_OFFLINE", "0") == "1" or os.environ.get("TRANSFORMERS_OFFLINE", "0") == "1"
+
+            # If offline mode is enabled, try to find the model in the cache by checking snapshot directories
+            if local_files_only:
+                hf_home = os.environ.get("HF_HOME") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+                if hf_home:
+                    # Convert model name to cache format: google/paligemma-3b-pt-224 -> models--google--paligemma-3b-pt-224
+                    cache_model_name = "models--" + self.tokenizer_name.replace("/", "--")
+                    cache_path = Path(hf_home) / cache_model_name
+
+                    # Try to find the snapshot directory
+                    if cache_path.exists():
+                        refs_main = cache_path / "refs" / "main"
+                        if refs_main.exists():
+                            snapshot_hash = refs_main.read_text().strip()
+                            snapshot_path = cache_path / "snapshots" / snapshot_hash
+                            if snapshot_path.exists():
+                                logging.info(f"Loading tokenizer from local cache: {snapshot_path}")
+                                self.input_tokenizer = AutoTokenizer.from_pretrained(str(snapshot_path), local_files_only=True)
+                                return
+
+            self.input_tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name, local_files_only=local_files_only)
         else:
             raise ValueError(
                 "Either 'tokenizer' or 'tokenizer_name' must be provided. "
