@@ -60,7 +60,7 @@ class Args(Tap):
 
     # Optional arguments
     output_dir: str | None = None  # Output directory (if None, modifies dataset in place)
-    target_frame: str = "gripper"  # Name of the end-effector frame in the URDF (use 'jaw' for SO100)
+    target_frame: str = "gripper_frame_link"  # Name of the end-effector frame in the URDF (use 'jaw' for SO100)
 
     # Joint configuration
     joint_names: list[str] = [
