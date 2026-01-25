@@ -110,7 +110,7 @@ def visualize_point_cloud(
 def main():
     args = Args().parse_args()
 
-    dataset_path = Path(args.dataset_dir)
+    dataset_path = Path(args.dataset_dir).expanduser()
     lmdb_path = dataset_path / "point_clouds"
 
     if not lmdb_path.exists():
