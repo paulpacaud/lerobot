@@ -56,9 +56,9 @@ python examples/post_process_dataset/define_workspace.py \
 
 ### 3. Add point clouds to dataset
 ```bash
-python examples/post_process_dataset/add_point_cloud_to_dataset.py \
+python -m examples.post_process_dataset.add_point_cloud_to_dataset \
     --dataset_dir=$HOME/lerobot_datasets/put_banana_in_plate_v2 \
-    --voxel_size=0.01
+    --voxel_size=0.01 --num_workers=8
 ```
 
 ### 4. Visualize point cloud
@@ -123,14 +123,6 @@ python examples/post_process_dataset/visualize_ee_trajectory_with_transform.py \
 python examples/post_process_dataset/convert_to_pointact_format.py --dataset_dir=$HOME/lerobot_datasets/put_banana_in_plate_v2 --output_dir=$HOME/lerobot_datasets/put_banana_in_plate_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf --tx=-0.28 --ty=0.03 --tz=0.05
 ```
 
-This converts the dataset to PointAct format with:
-- `observation.state`: (7,) [x, y, z, axis_angle1-3, gripper]
-- `observation.states.ee_state`: (6,) [x, y, z, axis_angle1-3]
-- `observation.states.joint_state`: (6,) joint positions (including gripper)
-- `observation.states.gripper_state`: (1,) gripper openness
-- `action`: (7,) [x, y, z, axis_angle1-3, gripper]
-- `observation.images.front_image`: (256, 256, 3) resized video
-- `observation.points.frontview`: point cloud data
 
 ### 11. Visualize PointAct dataset
 ```bash

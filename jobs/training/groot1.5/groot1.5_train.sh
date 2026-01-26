@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pi0_train
+#SBATCH --job-name=groot1.5_train
 #SBATCH -A hjx@h100
 #SBATCH -C h100
 #SBATCH --qos=qos_gpu_h100-t3
@@ -46,11 +46,11 @@ echo "=========================================="
 echo "Checking cached models:"
 ls -la "$HF_HOME" 2>/dev/null || echo "Cache directory not found!"
 echo ""
-echo "Pi0 base model location:"
-ls -d "$HF_HOME/models--lerobot--pi0_base" 2>/dev/null || echo "Pi0 model not found!"
+echo "GR00T N1.5 base model location:"
+ls -d "$HF_HOME/hub/models--nvidia--GR00T-N1.5-3B" 2>/dev/null || ls -d "$HF_HOME/models--nvidia--GR00T-N1.5-3B" 2>/dev/null || echo "GR00T model not found!"
 echo ""
-echo "PaliGemma tokenizer location:"
-ls -d "$HF_HOME/models--google--paligemma-3b-pt-224" 2>/dev/null || echo "PaliGemma tokenizer not found!"
+echo "Eagle2.5 VL tokenizer location:"
+ls -d "$HF_HOME/hub/models--lerobot--eagle2hg-processor-groot-n1p5" 2>/dev/null || ls -d "$HF_HOME/models--lerobot--eagle2hg-processor-groot-n1p5" 2>/dev/null || echo "Eagle tokenizer not found!"
 echo "=========================================="
 echo ""
 
@@ -58,29 +58,23 @@ echo ""
 export HF_LEROBOT_HOME="$SCRATCH/data/lerobot"
 export WANDB_MODE=offline
 
-TRAIN_DATASET="${TRAIN_DATASET:-data_v3_3tasks}"
-
 # Generate timestamp for unique output directory
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="$SCRATCH/data/lerobot/outputs/train/pi0_$TRAIN_DATASET_${TIMESTAMP}"
+OUTPUT_DIR="$SCRATCH/data/lerobot/outputs/train/groot1.5_put_fruits_in_plate_${TIMESTAMP}"
 echo "Output directory: $OUTPUT_DIR"
-
 
 python src/lerobot/scripts/lerobot_train.py \
     --dataset.repo_id=local \
-    --dataset.root="$SCRATCH/data/lerobot/$TRAIN_DATASET" \
-    --policy.type=pi0 \
+    --dataset.root="$SCRATCH/data/lerobot/put_fruits_in_plate" \
+    --policy.type=groot \
     --output_dir="$OUTPUT_DIR" \
-    --job_name="pi0_training_$TRAIN_DATASET" \
-    --policy.use_amp=true \
-    --policy.pretrained_path="$SCRATCH/data/lerobot/.cache/huggingface/models--lerobot--pi0_base/snapshots/e3a5218ef7a5903445baf2cb656912fc35dc8712" \
-    --policy.compile_model=true \
-    --policy.gradient_checkpointing=true \
-    --policy.dtype=bfloat16 \
-    --policy.freeze_vision_encoder=false \
-    --policy.train_expert_only=false \
+    --job_name=groot1.5_training_put_fruits_in_plate \
+    --policy.tune_llm=false \
+    --policy.tune_visual=false \
+    --policy.tune_projector=true \
+    --policy.tune_diffusion_model=true \
+    --policy.use_bf16=true \
     --steps=3000 \
-    --policy.device=cuda \
     --batch_size=32 \
     --num_workers=12 \
     --wandb.enable=true \

@@ -8,7 +8,6 @@ cd "$WORK/Projects/lerobot"
 module purge
 module load miniforge
 
-
 eval "$(conda shell.bash hook)"
 
 conda activate lerobot
