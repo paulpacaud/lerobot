@@ -73,13 +73,13 @@ def main():
         joint_names=motor_names,
     )
 
-    # Build pipeline to convert EE action to joints (same as examples)
+    # Build pipeline to convert EE action to joints (same as replay.py)
     ee_to_joints_processor = RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction](
         steps=[
             InverseKinematicsEEToJoints(
                 kinematics=kinematics,
                 motor_names=motor_names,
-                initial_guess_current_joints=True,
+                initial_guess_current_joints=False,  # Same as replay.py
             ),
         ],
         to_transition=robot_action_observation_to_transition,

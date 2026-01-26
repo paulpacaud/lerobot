@@ -184,4 +184,4 @@ python examples/post_process_dataset/read_ee_position.py --robot_port=/dev/ttyAC
 
 
 
-0.2755 -0.06 0.15 0.103345 -2.878524 0.000928 13.0
+0.26 0.012836 0.03 0.083719 -2.813308 0.016109 0.9
