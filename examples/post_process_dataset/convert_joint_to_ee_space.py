@@ -20,15 +20,18 @@ Supports both v2.1 and v3.0 LeRobot dataset formats.
 
 Usage:
 ```bash
-python examples/post_process_dataset/convert_joint_to_ee_space.py \
-    --dataset_dir=$HOME/lerobot_datasets/depth_test \
-    --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
-./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
-# Specify output directory to create a new dataset instead of modifying in place
+# Convert to EE space in robot frame (no translation offset)
 python examples/post_process_dataset/convert_joint_to_ee_space.py \
     --dataset_dir=$HOME/lerobot_datasets/depth_test \
     --output_dir=$HOME/lerobot_datasets/depth_test_ee \
     --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
+
+# Convert to EE space in world frame (with translation offset)
+python examples/post_process_dataset/convert_joint_to_ee_space.py \
+    --dataset_dir=$HOME/lerobot_datasets/depth_test \
+    --output_dir=$HOME/lerobot_datasets/depth_test_ee_world \
+    --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf \
+    --tx=-0.28 --ty=0.03 --tz=0.05
 ```
 
 Requirements:
@@ -61,6 +64,11 @@ class Args(Tap):
     # Optional arguments
     output_dir: str | None = None  # Output directory (if None, modifies dataset in place)
     target_frame: str = "gripper_frame_link"  # Name of the end-effector frame in the URDF (use 'jaw' for SO100)
+
+    # Robot-to-world translation offset (to convert from robot frame to world frame)
+    tx: float = 0.0  # X translation offset (meters)
+    ty: float = 0.0  # Y translation offset (meters)
+    tz: float = 0.0  # Z translation offset (meters)
 
     # Joint configuration
     joint_names: list[str] = [
@@ -105,6 +113,7 @@ def joints_to_ee(
     joint_values: np.ndarray,
     kinematics,
     rotation_class,
+    translation_offset: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     Convert joint positions to end-effector pose.
@@ -114,6 +123,7 @@ def joints_to_ee(
                      [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
         kinematics: RobotKinematics instance
         rotation_class: Rotation class for converting rotation matrix to rotation vector
+        translation_offset: Optional (3,) array with [tx, ty, tz] to convert from robot frame to world frame
 
     Returns:
         Array of shape (7,) with EE pose [x, y, z, rx, ry, rz, gripper]
@@ -128,6 +138,10 @@ def joints_to_ee(
 
     # Extract position (xyz in meters)
     position = T[:3, 3]
+
+    # Apply translation offset (robot frame to world frame)
+    if translation_offset is not None:
+        position = position + translation_offset
 
     # Extract orientation as rotation vector (axis-angle)
     rotation_vec = rotation_class.from_matrix(T[:3, :3]).as_rotvec()
@@ -158,6 +172,9 @@ def convert_dataset_to_ee_space(
     joint_names: list[str] | None = None,
     state_key: str = "observation.state",
     action_key: str = "action",
+    tx: float = 0.0,
+    ty: float = 0.0,
+    tz: float = 0.0,
 ) -> None:
     """
     Convert a LeRobot dataset from joint-space to end-effector space.
@@ -172,6 +189,9 @@ def convert_dataset_to_ee_space(
         joint_names: List of joint names for FK (excluding gripper)
         state_key: Key for state data in parquet files
         action_key: Key for action data in parquet files
+        tx: X translation offset (robot frame to world frame)
+        ty: Y translation offset (robot frame to world frame)
+        tz: Z translation offset (robot frame to world frame)
     """
     # Import kinematics (requires placo)
     try:
@@ -195,6 +215,13 @@ def convert_dataset_to_ee_space(
     logging.info(f"Loading URDF from: {urdf_path}")
     logging.info(f"Target frame: {target_frame}")
     logging.info(f"Joint names: {joint_names}")
+    logging.info(f"Translation offset: [{tx}, {ty}, {tz}]")
+
+    # Create translation offset array (None if all zeros for efficiency)
+    if tx == 0.0 and ty == 0.0 and tz == 0.0:
+        translation_offset = None
+    else:
+        translation_offset = np.array([tx, ty, tz], dtype=np.float64)
 
     kinematics = RobotKinematics(
         urdf_path=str(urdf_path),
@@ -239,8 +266,8 @@ def convert_dataset_to_ee_space(
             action_joints = np.array(row[action_key], dtype=np.float32)
 
             # Convert to EE space
-            state_ee = joints_to_ee(state_joints, kinematics, Rotation)
-            action_ee = joints_to_ee(action_joints, kinematics, Rotation)
+            state_ee = joints_to_ee(state_joints, kinematics, Rotation, translation_offset)
+            action_ee = joints_to_ee(action_joints, kinematics, Rotation, translation_offset)
 
             new_states.append(state_ee)
             new_actions.append(action_ee)
@@ -280,6 +307,7 @@ def convert_dataset_to_ee_space(
         "target_frame": target_frame,
         "joint_names": joint_names,
         "representation": "position_xyz_rotation_vector",
+        "translation_offset": [tx, ty, tz],
     }
 
     save_info(dataset_path, info)
@@ -301,4 +329,7 @@ if __name__ == "__main__":
         joint_names=args.joint_names,
         state_key=args.state_key,
         action_key=args.action_key,
+        tx=args.tx,
+        ty=args.ty,
+        tz=args.tz,
     )

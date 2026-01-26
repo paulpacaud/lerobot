@@ -32,6 +32,7 @@ class Args(Tap):
     episode_index: int = 0
     frame_index: int = 0
     video_key: str = "observation.images.front"  # Video key in dataset
+    target_frame: str = "gripper_frame_link"
 
 
 def load_joints_from_dataset(dataset_dir: str, episode_index: int, frame_index: int) -> np.ndarray:
@@ -75,7 +76,7 @@ def extract_frame_from_video(video_path: Path, frame_index: int) -> np.ndarray:
         return frames[frame_index]
 
 
-def render_robot_to_image(urdf_path: str, joints_deg: np.ndarray) -> np.ndarray:
+def render_robot_to_image(urdf_path: str, joints_deg: np.ndarray, target_frame: str) -> np.ndarray:
     """Render the robot to an image using Open3D offscreen rendering."""
     import open3d as o3d
     import yourdfpy
@@ -113,7 +114,7 @@ def render_robot_to_image(urdf_path: str, joints_deg: np.ndarray) -> np.ndarray:
     # Compute FK for EE position
     kin = RobotKinematics(
         urdf_path=urdf_path,
-        target_frame_name="gripper_frame_link",
+        target_frame_name=target_frame,
         joint_names=joint_names,
     )
     T = kin.forward_kinematics(joints_deg)
@@ -178,14 +179,14 @@ def main():
 
     # Render robot
     print("Rendering robot...")
-    robot_img = render_robot_to_image(urdf_path, joints_deg)
+    robot_img = render_robot_to_image(urdf_path, joints_deg, args.target_frame)
 
     # Compute FK for display
     from lerobot.model.kinematics import RobotKinematics
 
     kin = RobotKinematics(
         urdf_path=urdf_path,
-        target_frame_name="gripper_frame_link",
+        target_frame_name=args.target_frame,
         joint_names=["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"],
     )
     T = kin.forward_kinematics(joints_deg)

@@ -20,6 +20,8 @@
 | `visualize_postprocessed_pcd.py` | 3D visualization of point clouds with coordinate axes |
 | `visualize_robot_fk_with_rgb.py` | Side-by-side comparison of RGB image and URDF robot visualization to verify FK |
 | `visualize_ee_trajectory_with_transform.py` | Visualize EE trajectory on point cloud with adjustable translation offset |
+| `convert_to_pointact_format.py` | Converts dataset to PointAct format with EE+joint states, resized images, and renamed keys |
+| `visualize_pointact_dataset.py` | Visualize PointAct dataset with EE trajectory and point cloud |
 | `constants/` | Camera calibration files (intrinsics.npz, extrinsics.npz), URDF files, and workspace definition |
 | `reference_only/` | Reference implementations (depth projection, point cloud processing) |
 
@@ -48,16 +50,24 @@ python examples/post_process_dataset/add_point_cloud_to_dataset.py \
     --voxel_size=0.01
 ```
 
-### 4. Convert joint-space to EE-space
+### 4. Visualize point cloud
 ```bash
-# Convert and create new dataset
+python examples/post_process_dataset/visualize_postprocessed_pcd.py \
+    --dataset_dir=$HOME/lerobot_datasets/depth_test_v2 \
+    --episode_index=0 --frame_index=100
+```
+
+### 5. Convert joint-space to EE-space (in the robot frame!)
+```bash
+# Convert to EE space with no translation offset (robot frame)
 python examples/post_process_dataset/convert_joint_to_ee_space.py \
     --dataset_dir=$HOME/lerobot_datasets/depth_test_v2 \
     --output_dir=$HOME/lerobot_datasets/depth_test_ee \
-    --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
+    --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf \
+    --tx=0.0 --ty=0.0 --tz=0.0
 ```
 
-### 5. Verify FK with RGB image
+### 6. Verify FK with RGB image
 ```bash
 python examples/post_process_dataset/visualize_robot_fk_with_rgb.py \
     --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf \
@@ -66,21 +76,58 @@ python examples/post_process_dataset/visualize_robot_fk_with_rgb.py \
     --frame_index=100
 ```
 
-### 6. Find robot-to-world transform
+### 7. Find robot-to-world transform
 ```bash
 # Visualize EE trajectory on point cloud with translation offset
 python examples/post_process_dataset/visualize_ee_trajectory_with_transform.py \
     --dataset_dir=$HOME/lerobot_datasets/depth_test_ee \
     --episode_index=0 \
-    --tx=-0.28 --ty=0.0 --tz=0.0
+    --pcd_frame=0 \
+    --tx=-0.28 --ty=0.03 --tz=0.05
 ```
 
-### 7. Visualize point cloud
+### 8. (Again) Convert joint-space to EE-space (but in the world frame!)
 ```bash
-python examples/post_process_dataset/visualize_postprocessed_pcd.py \
+# Convert to EE space with translation offset (world frame)
+# Use the offset found in step 7
+python examples/post_process_dataset/convert_joint_to_ee_space.py \
     --dataset_dir=$HOME/lerobot_datasets/depth_test_v2 \
-    --episode_index=0 --frame_index=100
+    --output_dir=$HOME/lerobot_datasets/depth_test_v2_ee \
+    --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf \
+    --tx=-0.28 --ty=0.03 --tz=0.05
 ```
+
+### 9. (sanity check) Check what you got
+```bash
+# Visualize EE trajectory on point cloud with translation offset
+python examples/post_process_dataset/visualize_ee_trajectory_with_transform.py \
+    --dataset_dir=$HOME/lerobot_datasets/depth_test_v2_ee \
+    --episode_index=0 \
+    --pcd_frame=0 \
+    --tx=-0 --ty=0 --tz=0
+```
+
+### 10. Convert to PointAct format
+```bash
+python examples/post_process_dataset/convert_to_pointact_format.py --dataset_dir=$HOME/lerobot_datasets/depth_test_v2 --output_dir=$HOME/lerobot_datasets/depth_test_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf --tx=-0.28 --ty=0.03 --tz=0.05
+```
+
+This converts the dataset to PointAct format with:
+- `observation.state`: (7,) [x, y, z, axis_angle1-3, gripper]
+- `observation.states.ee_state`: (6,) [x, y, z, axis_angle1-3]
+- `observation.states.joint_state`: (6,) joint positions (including gripper)
+- `observation.states.gripper_state`: (1,) gripper openness
+- `action`: (7,) [x, y, z, axis_angle1-3, gripper]
+- `observation.images.front_image`: (256, 256, 3) resized video
+- `observation.points.frontview`: point cloud data
+
+### 11. Visualize PointAct dataset
+```bash
+python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/depth_test_pointact --episode_index=0 --pcd_frame=0
+```
+
+### 12. Push to Hub
+huggingface-cli upload ${HF_USER}/depth_test_pointact $HOME/lerobot_datasets/depth_test_pointact --repo-type dataset
 
 ## Notes
 
