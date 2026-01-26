@@ -49,18 +49,18 @@ lerobot-record \
 
 
 ### 0. Push/pull to hub
-huggingface-cli upload ${HF_USER}/put_cube_in_spot $HOME/lerobot_datasets/put_cube_in_spot --repo-type dataset
+huggingface-cli upload ${HF_USER}/hang_mug_test $HOME/lerobot_datasets/hang_mug_test --repo-type dataset
 
-huggingface-cli download paulpacaud/put_cube_in_spot \
+huggingface-cli download paulpacaud/hang_mug_test \
   --repo-type dataset \
-  --local-dir put_cube_in_spot \
+  --local-dir hang_mug_test \
   --local-dir-use-symlinks False
 
 ### 1. Convert v3 to v2 format
 ```bash
 python examples/post_process_dataset/convert_lerobot_dataset_v3_to_v2.py \
-    --input_dir=$HOME/lerobot_datasets/put_cube_in_spot \
-    --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2
+    --input_dir=$HOME/lerobot_datasets/hang_mug_test \
+    --output_dir=$HOME/lerobot_datasets/hang_mug_test_v2
 ```
 
 ### 2. Define workspace bounds (interactive visualization)
@@ -74,8 +74,8 @@ python examples/post_process_dataset/define_workspace.py \
 
 ### 3. Add point clouds to dataset
 ```bash
-python examples/post_process_dataset/add_point_cloud_to_dataset.py \
-    --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 \
+python -m examples.post_process_dataset.add_point_cloud_to_dataset \
+    --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 \
     --voxel_size=0.01
 ```
 
@@ -120,10 +120,10 @@ python examples/post_process_dataset/visualize_ee_trajectory_with_transform.py \
 # Convert to EE space with translation offset (world frame)
 # Use the offset found in step 7
 python examples/post_process_dataset/convert_joint_to_ee_space.py \
-    --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 \
-    --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2_ee \
+    --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 \
+    --output_dir=$HOME/lerobot_datasets/hang_mug_test_v2_ee \
     --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf \
-    --tx=-0.28 --ty=0.03 --tz=0.05
+    --tx=-0.2755 --ty=-0.0599 --tz=0.0257
 ```
 
 ### 9. (sanity check) Check what you got
