@@ -6,6 +6,7 @@ huggingface-cli download paulpacaud/depth_test_pointact \
   --local-dir-use-symlinks False
 ```
 
+
 Visualize the dataset:
 It shows the point cloud at a given frame for a given episode, with the trajectory of the end-effector overlaid.
 ```bash
