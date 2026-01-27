@@ -13,6 +13,7 @@
 
 | File | Description |
 |------|-------------|
+| `run_full_pipeline.py` | **Unified pipeline**: v3 → v2 → point clouds → PointAct format in one command |
 | `convert_lerobot_dataset_v3_to_v2.py` | Converts LeRobot v3 datasets to v2.1 format (per-episode parquet/video files) |
 | `define_workspace.py` | Interactive tool to visualize and choose workspace bounds for point cloud cropping |
 | `add_point_cloud_to_dataset.py` | Computes voxelized point clouds from RGB+depth and stores in LMDB (supports v2.1 and v3.0) |
@@ -67,6 +68,24 @@ huggingface-cli download paulpacaud/data_v3_3tasks \
   --repo-type dataset \
   --local-dir data_v3_3tasks \
   --local-dir-use-symlinks False
+
+### Full Pipeline (Recommended)
+Run the complete conversion pipeline in one command:
+```bash
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_cube_in_spot --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_pointact
+```
+
+Options:
+- `--num_workers=8` - Parallel workers for point cloud processing
+- `--voxel_size=0.01` - Point cloud voxel size (meters)
+- `--image_size=256` - Target image size
+- `--keep_intermediate` - Keep intermediate v2 directory
+- `--no_trim_idle_frames` - Disable idle frame trimming
+
+---
+
+### Individual Steps (Manual)
+
 ### 1. Convert v3 to v2 format
 ```bash
 python examples/post_process_dataset/convert_lerobot_dataset_v3_to_v2.py \
@@ -79,6 +98,12 @@ python examples/post_process_dataset/convert_lerobot_dataset_v3_to_v2.py \
 python -m examples.post_process_dataset.add_point_cloud_to_dataset \
     --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 \
     --voxel_size=0.01 --num_workers=8
+    
+python -m examples.post_process_dataset.add_point_cloud_to_dataset_multigpu \
+  --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 \
+  --gpu_ids=0,1,2,3 \
+  --voxel_size=0.01 \
+  --cpu_workers_per_gpu=4
 ```
 
 ### 10. Convert to PointAct format

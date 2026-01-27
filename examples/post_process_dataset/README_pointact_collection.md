@@ -1,3 +1,7 @@
+# Data Collection
+
+## put_cube_in_spot
+
 lerobot-record \
     --robot.type=so100_follower \
     --robot.port=/dev/ttyACM0 \
