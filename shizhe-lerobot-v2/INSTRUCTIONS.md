@@ -1,8 +1,8 @@
 Download the dataset:
 ```bash
-huggingface-cli download paulpacaud/depth_test_pointact \
+huggingface-cli download paulpacaud/put_cube_in_spot_pointact \
   --repo-type dataset \
-  --local-dir depth_test_pointact \
+  --local-dir put_cube_in_spot_pointact \
   --local-dir-use-symlinks False
 ```
 

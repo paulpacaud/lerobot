@@ -8,6 +8,9 @@ The EE positions should already be in world frame (no additional transform neede
 Usage:
 ```bash
 python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/depth_test_pointact --episode_index=0 --pcd_frame=0
+
+# Interactive mode: click on points to see their coordinates
+python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/depth_test_pointact --episode_index=0 --pcd_frame=0 --interactive
 ```
 """
 
@@ -72,6 +75,7 @@ class Args(Tap):
     # Visualization options
     show_joint_info: bool = False  # Print joint state info for each key frame
     trajectory_subsample: int = 3  # Subsample trajectory for performance
+    interactive: bool = False  # Enable interactive mode to click and see point coordinates
 
 
 def load_info(dataset_path: Path) -> dict:
@@ -224,12 +228,16 @@ def print_key_frame_info(ee_positions: np.ndarray, states: np.ndarray, joint_sta
             print(f"  {color_name:8s} (Frame {frame_idx:4d}): pos={pos_str}, gripper={gripper_val:.2f}")
 
 
-def print_visualization_controls() -> None:
+def print_visualization_controls(interactive: bool = False) -> None:
     """Print visualization control instructions."""
     print("\nVisualization controls:")
     print("  Left mouse: Rotate")
     print("  Right mouse: Pan")
     print("  Scroll: Zoom")
+    if interactive:
+        print("  Shift + Left click: Select point (coordinates printed to console)")
+        print("  K: Keep current selection")
+        print("  C: Clear selection")
     print("  Q: Quit")
 
 
@@ -254,6 +262,54 @@ def run_visualizer(pcd: o3d.geometry.PointCloud, trajectory: o3d.geometry.LineSe
     opt.background_color = BACKGROUND_COLOR
 
     vis.run()
+    vis.destroy_window()
+
+
+def run_interactive_visualizer(pcd: o3d.geometry.PointCloud, trajectory: o3d.geometry.LineSet, spheres: list[o3d.geometry.TriangleMesh], episode_index: int) -> None:
+    """Set up and run the Open3D interactive visualizer with point picking."""
+    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=AXES_SIZE)
+
+    vis = o3d.visualization.VisualizerWithVertexSelection()
+    vis.create_window(
+        window_name=f"PointAct Dataset - Episode {episode_index} (Interactive)",
+        width=WINDOW_WIDTH,
+        height=WINDOW_HEIGHT
+    )
+    vis.add_geometry(pcd)
+    vis.add_geometry(trajectory)
+    vis.add_geometry(axes)
+    for s in spheres:
+        vis.add_geometry(s)
+
+    opt = vis.get_render_option()
+    opt.point_size = POINT_SIZE
+    opt.background_color = BACKGROUND_COLOR
+
+    print("\nInteractive mode: Shift+Click on points to select them.")
+    print("Press 'K' to keep selection, then close window to see coordinates.\n")
+
+    vis.run()
+
+    # Get selected points after visualization closes
+    picked_points = vis.get_picked_points()
+    if picked_points:
+        print("\n" + "=" * 50)
+        print("SELECTED POINTS:")
+        print("=" * 50)
+        points = np.asarray(pcd.points)
+        colors = np.asarray(pcd.colors) if pcd.has_colors() else None
+        for i, picked in enumerate(picked_points):
+            idx = picked.index
+            coord = points[idx]  # Use original point cloud coordinates for full precision
+            print(f"\nPoint {i + 1} (index {idx}):")
+            print(f"  Coordinates: X={coord[0]:.3f}, Y={coord[1]:.3f}, Z={coord[2]:.3f}")
+            if colors is not None and idx < len(colors):
+                c = colors[idx]
+                print(f"  Color (RGB): [{c[0]:.3f}, {c[1]:.3f}, {c[2]:.3f}]")
+        print("=" * 50)
+    else:
+        print("\nNo points were selected.")
+
     vis.destroy_window()
 
 
@@ -288,8 +344,11 @@ def main():
     print_key_frame_info(ee_positions, states, joint_states, key_frames, args.show_joint_info)
 
     # Run visualization
-    print_visualization_controls()
-    run_visualizer(pcd, trajectory, spheres, args.episode_index)
+    print_visualization_controls(interactive=args.interactive)
+    if args.interactive:
+        run_interactive_visualizer(pcd, trajectory, spheres, args.episode_index)
+    else:
+        run_visualizer(pcd, trajectory, spheres, args.episode_index)
 
 
 if __name__ == "__main__":

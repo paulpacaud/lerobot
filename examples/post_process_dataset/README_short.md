@@ -114,8 +114,19 @@ python -m examples.post_process_dataset.convert_to_pointact_format --dataset_dir
 
 ### 11. Visualize PointAct dataset
 ```bash
-python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --pcd_frame=0
+python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_pointact --episode_index=10 --pcd_frame=100
 ```
+
+# 5. Replay episode
+
+xdg-open /home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact/videos/chunk-000/observation.images.front_image/episode_000010.mp4
+
+## Direct joint replay (no IK)                                                                                                                                                                                                                                                                                                                                                     
+python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=10 --robot_port=/dev/ttyACM0 --replay_target=joint 
+
+## EE cartesian replay with IK                                                                                                                                                                                                                                                                                                                                                     
+python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=10 --robot_port=/dev/ttyACM0 --replay_target=ee                                                                                                                                                                                    
+
 
 ### 12. Push to Hub
 huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact $HOME/lerobot_datasets/put_cube_in_spot_pointact --repo-type dataset
