@@ -1,36 +1,5 @@
 # Post-Process Dataset Tools
 
-## Pipeline
-
-1. Convert v3 → v2 format
-2. Define workspace bounds (optional)
-3. Add point clouds to dataset
-4. Convert joint-space to EE-space
-5. Find robot-to-world transform
-6. Visualize results
-
-## Files
-
-| File | Description |
-|------|-------------|
-| `run_full_pipeline.py` | **Unified pipeline**: v3 → v2 → point clouds → PointAct format in one command |
-| `convert_lerobot_dataset_v3_to_v2.py` | Converts LeRobot v3 datasets to v2.1 format (per-episode parquet/video files) |
-| `define_workspace.py` | Interactive tool to visualize and choose workspace bounds for point cloud cropping |
-| `add_point_cloud_to_dataset.py` | Computes voxelized point clouds from RGB+depth and stores in LMDB (supports v2.1 and v3.0) |
-| `convert_joint_to_ee_space.py` | Converts joint-space state/action to end-effector (Cartesian) space using FK |
-| `visualize_postprocessed_pcd.py` | 3D visualization of point clouds with coordinate axes |
-| `visualize_robot_fk_with_rgb.py` | Side-by-side comparison of RGB image and URDF robot visualization to verify FK |
-| `visualize_ee_trajectory_with_transform.py` | Visualize EE trajectory on point cloud with adjustable translation offset |
-| `convert_to_pointact_format.py` | Converts dataset to PointAct format with EE+joint states, resized images, and renamed keys |
-| `visualize_pointact_dataset.py` | Visualize PointAct dataset with EE trajectory and point cloud |
-| `constants/` | Camera calibration files (intrinsics.npz, extrinsics.npz), URDF files, and workspace definition |
-| `reference_only/` | Reference implementations (depth projection, point cloud processing) |
-
-## Commands
-
-### Record dataset
-
-
 ### 0. Push/pull to hub
 huggingface-cli upload ${HF_USER}/data_v3_3tasks $HOME/lerobot_datasets/data_v3_3tasks --repo-type dataset
 
@@ -39,50 +8,11 @@ huggingface-cli download paulpacaud/put_cube_in_spot_pointact \
   --local-dir put_cube_in_spot_pointact \
   --local-dir-use-symlinks False
 
-huggingface-cli download paulpacaud/put_banana_in_plate_pointact \
-  --repo-type dataset \
-  --local-dir put_banana_in_plate_pointact \
-  --local-dir-use-symlinks False
+### Full Pipeline
 
-huggingface-cli download paulpacaud/put_cube_in_spot_pointact \
-  --repo-type dataset \
-  --local-dir put_cube_in_spot_pointact \
-  --local-dir-use-symlinks False
-
-huggingface-cli download paulpacaud/put_cube_in_spot \
-  --repo-type dataset \
-  --local-dir put_cube_in_spot \
-  --local-dir-use-symlinks False
-
-huggingface-cli download paulpacaud/put_banana_in_plate \
-  --repo-type dataset \
-  --local-dir put_banana_in_plate \
-  --local-dir-use-symlinks False
-
-huggingface-cli download paulpacaud/put_cube_in_spot \
-  --repo-type dataset \
-  --local-dir put_cube_in_spot \
-  --local-dir-use-symlinks False
-
-huggingface-cli download paulpacaud/data_v3_3tasks \
-  --repo-type dataset \
-  --local-dir data_v3_3tasks \
-  --local-dir-use-symlinks False
-
-### Full Pipeline (Recommended)
-Run the complete conversion pipeline in one command:
 ```bash
-python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_cube_in_spot --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_banana_and_toy_in_plates --output_dir=$HOME/lerobot_datasets/put_banana_and_toy_in_plates_pointact
 ```
-
-Options:
-- `--num_workers=8` - Parallel workers for point cloud processing
-- `--voxel_size=0.01` - Point cloud voxel size (meters)
-- `--image_size=256` - Target image size
-- `--keep_intermediate` - Keep intermediate v2 directory
-- `--no_trim_idle_frames` - Disable idle frame trimming
-
----
 
 ### Individual Steps (Manual)
 
@@ -99,11 +29,6 @@ python -m examples.post_process_dataset.add_point_cloud_to_dataset \
     --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 \
     --voxel_size=0.01 --num_workers=8
     
-python -m examples.post_process_dataset.add_point_cloud_to_dataset_multigpu \
-  --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 \
-  --gpu_ids=0,1,2,3 \
-  --voxel_size=0.01 \
-  --cpu_workers_per_gpu=4
 ```
 
 ### 10. Convert to PointAct format
@@ -119,3 +44,7 @@ python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir
 
 ### 12. Push to Hub
 huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact $HOME/lerobot_datasets/put_cube_in_spot_pointact --repo-type dataset
+
+# Training
+## Merge datasets
+

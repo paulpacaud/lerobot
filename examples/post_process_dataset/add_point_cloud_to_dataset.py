@@ -80,7 +80,7 @@ class Args(Tap):
     workspace_z_max: float = WORKSPACE['Z_BBOX'][1]  # Workspace Z maximum bound
 
     # Parallelization
-    num_workers: int = 1  # Number of parallel workers (1 = single-threaded)
+    num_workers: int = 8  # Number of parallel workers (1 = single-threaded)
 
 
 DEFAULT_CHUNK_SIZE = 1000
