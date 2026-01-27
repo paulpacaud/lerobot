@@ -11,7 +11,7 @@ huggingface-cli download paulpacaud/put_cube_in_spot_pointact \
 ### Full Pipeline
 
 ```bash
-python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_banana_and_toy_in_plates --output_dir=$HOME/lerobot_datasets/put_banana_and_toy_in_plates_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_sockets_into_drawer --output_dir=$HOME/lerobot_datasets/put_sockets_into_drawer_pointact
 ```
 
 ### Individual Steps (Manual)
@@ -62,6 +62,6 @@ huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact $HOME/lerobot_datase
 
 # clean existing datasets from their depth feature
 ```bash
-python3 -c "import pandas as pd; import pyarrow.parquet as pq; import pyarrow as pa; from pathlib import Path; from tqdm import tqdm; p = Path('/home/prl-tiago/lerobot_datasets/YOUR_DATASET'); cols = ['observation.images.front_depth', 'observation.images.front']; [pq.write_table(pa.Table.from_pandas(pd.read_parquet(f).drop(columns=[c for c in cols if c in             
+python3 -c "import pandas as pd; import pyarrow.parquet as pq; import pyarrow as pa; from pathlib import Path; from tqdm import tqdm; p = Path('$HOME/lerobot_datasets/put_cube_in_spot_pointact'); cols = ['observation.images.front_depth', 'observation.images.front']; [pq.write_table(pa.Table.from_pandas(pd.read_parquet(f).drop(columns=[c for c in cols if c in             
   pd.read_parquet(f).columns]), preserve_index=False), f) for f in tqdm(list((p/'data').glob('**/*.parquet')))]" 
 ```
