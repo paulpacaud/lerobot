@@ -7,7 +7,7 @@ CONSTANTS_DIR = Path(__file__).parent
 INTRINSICS_FILE = CONSTANTS_DIR / "intrinsics.npz"
 EXTRINSICS_FILE = CONSTANTS_DIR / "extrinsics.npz"
 
-TABLE_HEIGHT=0.018
+TABLE_HEIGHT=0.025
 
 # Workspace bounds  (in meters, world coordinates), we crop outside
 WORKSPACE = {
@@ -16,8 +16,7 @@ WORKSPACE = {
     'Z_BBOX': [TABLE_HEIGHT, 0.4],    # Up-down (height from table), we crop the table
 }
 
-# Robot frame position in world coordinates (meters)
-# Translation offset from robot base to world frame origin
+# Robot frame position in world coordinates (meters). Translation offset from robot base to world frame origin
 ROBOT_FRAME = {
     'tx': -0.2755,
     'ty': -0.0599,
