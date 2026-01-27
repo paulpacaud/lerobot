@@ -1,20 +1,36 @@
 #!/usr/bin/env python
 
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
-Replays the actions of an episode from an EE-space dataset on a robot using inverse kinematics.
+Replay a PointAct-format LeRobot dataset on a real robot.
 
-This script takes end-effector (EE) positions from a PointAct-format dataset,
-converts them to joint positions using inverse kinematics, and sends them to the robot.
+This script supports two replay modes:
+- "ee": Replay EE trajectory using inverse kinematics (converts EE pose to joint positions)
+- "joint": Replay recorded joint positions directly (no IK)
 
-This allows validating that the EE representation is sufficient to accurately reproduce
-the recorded trajectories.
+The PointAct dataset actions have format: [x, y, z, axis_angle1, axis_angle2, axis_angle3, gripper_openness]
+The joint_state has format: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
 
 Usage:
 ```bash
-python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --robot_port=/dev/ttyACM0
+# Replay using EE cartesian trajectory with IK
+python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/hang_mug_test_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=ee
 
-# With slowdown (5x slower)
-python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --slowdown=5.0
+# Replay using recorded joint positions directly
+python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/hang_mug_test_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=joint
 ```
 """
 
@@ -28,135 +44,181 @@ import pandas as pd
 from tap import Tap
 
 from lerobot.model.kinematics import RobotKinematics
+from lerobot.processor import RobotAction, RobotObservation, RobotProcessorPipeline
+from lerobot.processor.converters import (
+    robot_action_observation_to_transition,
+    transition_to_robot_action,
+)
 from lerobot.robots.so100_follower.config_so100_follower import SO100FollowerConfig
+from lerobot.robots.so100_follower.robot_kinematic_processor import InverseKinematicsEEToJoints
 from lerobot.robots.so100_follower.so100_follower import SO100Follower
 from lerobot.utils.robot_utils import precise_sleep
-from lerobot.utils.rotation import Rotation
-from lerobot.utils.utils import log_say
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 DEFAULT_URDF_PATH = "./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf"
-DEFAULT_CHUNK_SIZE = 1000
-
-# Joint names for the SO100/SO101 arm (excluding gripper for IK)
-ARM_JOINT_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
-ALL_MOTOR_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
 
 
 class Args(Tap):
-    """Arguments for replaying an EE-space dataset on a robot."""
+    """Arguments for replaying a PointAct dataset."""
 
-    dataset_dir: str  # Path to the PointAct dataset directory
-    episode_index: int = 0  # Episode to replay
+    # Required
+    dataset_dir: str  # Path to the PointAct-format LeRobot dataset
+
+    # Robot configuration
     robot_port: str = "/dev/ttyACM0"  # USB port for the robot
     robot_id: str = "follower_arm"  # Robot identifier
+    use_degrees: bool = True  # Use degrees for motor control
+
+    # Kinematics
     urdf_path: str = DEFAULT_URDF_PATH  # Path to the robot URDF file
     target_frame: str = "gripper_frame_link"  # End-effector frame in URDF
-    use_degrees: bool = True  # Use degrees for motor control (must match calibration)
-    play_sounds: bool = True  # Use vocal synthesis for events
-    slowdown: float = 1.0  # Slowdown factor (e.g., 5.0 = 5x slower)
+
+    # Replay configuration
+    episode_index: int = 0  # Episode to replay
+    start_frame: int = 0  # Frame index to start replay from
+    end_frame: int = -1  # Frame index to end replay (-1 for all)
+    fps: float | None = None  # Override FPS (None uses dataset FPS)
+    replay_target: str = "ee"  # "ee" for EE cartesian with IK, "joint" for direct joint replay
 
 
-def load_info(dataset_path: Path) -> dict:
-    """Load info.json from dataset root."""
+    # Safety
+    initial_move_duration: float = 3.0  # Duration (seconds) to move to first position
+    initial_move_steps: int = 50  # Number of interpolation steps for initial move
+    confirm_start: bool = True  # Ask for confirmation before starting replay
+
+
+def load_dataset_info(dataset_path: Path) -> dict:
+    """Load info.json from dataset."""
     with open(dataset_path / "meta" / "info.json") as f:
         return json.load(f)
 
 
+def get_translation_offset(info: dict) -> np.ndarray | None:
+    """Extract translation offset from dataset info if present."""
+    conversion_info = info.get("conversion_info", {})
+    pointact_info = conversion_info.get("pointact_conversion", {})
+    offset = pointact_info.get("translation_offset")
+    if offset is not None:
+        return np.array(offset, dtype=np.float64)
+    return None
+
+
 def load_episode_data(dataset_path: Path, episode_index: int) -> pd.DataFrame:
-    """Load episode data from parquet file."""
-    chunk_idx = episode_index // DEFAULT_CHUNK_SIZE
-    parquet_path = dataset_path / "data" / f"chunk-{chunk_idx:03d}" / f"episode_{episode_index:06d}.parquet"
+    """Load all frames for a specific episode."""
+    data_dir = dataset_path / "data"
+    all_frames = []
 
-    if not parquet_path.exists():
-        raise FileNotFoundError(f"Episode parquet file not found: {parquet_path}")
+    for chunk_dir in sorted(data_dir.glob("chunk-*")):
+        for parquet_file in sorted(chunk_dir.glob("*.parquet")):
+            df = pd.read_parquet(parquet_file)
+            episode_frames = df[df["episode_index"] == episode_index]
+            if len(episode_frames) > 0:
+                all_frames.append(episode_frames)
 
-    return pd.read_parquet(parquet_path)
+    if not all_frames:
+        raise ValueError(f"Episode {episode_index} not found in dataset")
+
+    return pd.concat(all_frames, ignore_index=True).sort_values("frame_index")
 
 
-def ee_action_to_joint_action(
-    ee_action: np.ndarray,
-    kinematics: RobotKinematics,
-    current_joints: np.ndarray,
-    translation_offset: np.ndarray,
-) -> dict[str, float]:
+def action_array_to_ee_action(
+    action: np.ndarray,
+    translation_offset: np.ndarray | None = None,
+) -> RobotAction:
     """
-    Convert EE action to joint action using inverse kinematics.
+    Convert PointAct action array to EE action dict.
 
     Args:
-        ee_action: Array of shape (7,) with [x, y, z, rx, ry, rz, gripper]
-                   in world frame (with translation offset applied)
-        kinematics: RobotKinematics instance for IK computation
-        current_joints: Current joint positions in degrees (for IK initial guess)
-        translation_offset: [tx, ty, tz] offset applied during dataset creation
+        action: Array [x, y, z, axis_angle1, axis_angle2, axis_angle3, gripper_openness]
+        translation_offset: Offset that was added during conversion (will be subtracted to get robot frame)
 
     Returns:
-        Dictionary mapping motor names to joint positions
+        RobotAction dict with ee.x, ee.y, ee.z, ee.wx, ee.wy, ee.wz, ee.gripper_pos
     """
-    # Extract position and orientation from EE action
-    position_world = ee_action[:3]
-    rotation_vec = ee_action[3:6]
-    gripper_pos = ee_action[6]
+    x, y, z = action[0], action[1], action[2]
+    wx, wy, wz = action[3], action[4], action[5]
+    gripper = action[6]
 
-    # Convert from world frame to robot frame by undoing the translation offset
-    position_robot = position_world - translation_offset
+    # Transform from world frame to robot frame by reversing the translation offset
+    if translation_offset is not None:
+        x -= translation_offset[0]
+        y -= translation_offset[1]
+        z -= translation_offset[2]
 
-    print(f"EEF_world = T {position_world} R {rotation_vec} S {gripper_pos}")
-    print(f"EEF_robot = T {position_robot} R {rotation_vec} S {gripper_pos}")
+    return {
+        "ee.x": float(x),
+        "ee.y": float(y),
+        "ee.z": float(z),
+        "ee.wx": float(wx),
+        "ee.wy": float(wy),
+        "ee.wz": float(wz),
+        "ee.gripper_pos": float(gripper),
+    }
 
-    # Build 4x4 transformation matrix for IK
-    T_desired = np.eye(4, dtype=np.float64)
-    T_desired[:3, :3] = Rotation.from_rotvec(rotation_vec).as_matrix()
-    T_desired[:3, 3] = position_robot
 
-    # Compute inverse kinematics with high orientation weight to match full 6-DOF pose
-    joint_positions = kinematics.inverse_kinematics(
-        current_joints[:5], T_desired, position_weight=1.0, orientation_weight=1.0
-    )
+def joint_array_to_joint_action(joint_state: np.ndarray, motor_names: list[str]) -> RobotAction:
+    """
+    Convert joint state array to joint action dict.
 
-    # Build action dictionary for robot
-    action = {}
-    for i, motor_name in enumerate(ARM_JOINT_NAMES):
-        action[f"{motor_name}.pos"] = float(joint_positions[i])
-    action["gripper.pos"] = float(gripper_pos)
+    Args:
+        joint_state: Array [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
+        motor_names: List of motor names from robot
 
-    return action
+    Returns:
+        RobotAction dict with {motor_name}.pos for each motor
+    """
+    return {f"{name}.pos": float(joint_state[i]) for i, name in enumerate(motor_names)}
 
 
 def main():
     args = Args().parse_args()
+
+    # Validate replay_target
+    if args.replay_target not in ("ee", "joint"):
+        raise ValueError(f"Invalid replay_target: {args.replay_target}. Must be 'ee' or 'joint'")
+
     dataset_path = Path(args.dataset_dir)
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
 
     # Load dataset info
     logging.info(f"Loading dataset from: {dataset_path}")
-    info = load_info(dataset_path)
-    fps = info["fps"]
-    total_episodes = info["total_episodes"]
+    logging.info(f"Replay mode: {args.replay_target}")
+    info = load_dataset_info(dataset_path)
 
-    if args.episode_index >= total_episodes:
-        raise ValueError(f"Episode index {args.episode_index} out of range (total: {total_episodes})")
+    dataset_fps = info.get("fps", 30)
+    fps = args.fps if args.fps is not None else dataset_fps
+    logging.info(f"Dataset FPS: {dataset_fps}, Replay FPS: {fps}")
 
-    # Get translation offset from dataset conversion info
-    conversion_info = info.get("conversion_info", {}).get("pointact_conversion", {})
-    translation_offset = np.array(
-        conversion_info.get("translation_offset", [0.0, 0.0, 0.0]),
-        dtype=np.float64
-    )
-    logging.info(f"Translation offset (world -> robot): {translation_offset}")
+    # Get translation offset (world frame -> robot frame) - only needed for EE mode
+    translation_offset = None
+    if args.replay_target == "ee":
+        translation_offset = get_translation_offset(info)
+        if translation_offset is not None:
+            logging.info(f"Translation offset (world to robot): {translation_offset}")
+        else:
+            logging.warning("No translation offset found in dataset - assuming data is already in robot frame")
 
     # Load episode data
     logging.info(f"Loading episode {args.episode_index}...")
-    episode_df = load_episode_data(dataset_path, args.episode_index)
-    logging.info(f"Loaded {len(episode_df)} frames")
+    episode_data = load_episode_data(dataset_path, args.episode_index)
+    total_frames = len(episode_data)
+    logging.info(f"Episode has {total_frames} frames")
 
-    # Initialize kinematics solver
-    logging.info(f"Loading URDF from: {args.urdf_path}")
-    kinematics = RobotKinematics(
-        urdf_path=args.urdf_path,
-        target_frame_name=args.target_frame,
-        joint_names=ARM_JOINT_NAMES,
-    )
+    # Determine frame range
+    start_frame = args.start_frame
+    end_frame = args.end_frame if args.end_frame >= 0 else total_frames
+    end_frame = min(end_frame, total_frames)
+    logging.info(f"Replaying frames {start_frame} to {end_frame}")
+
+    # Extract data based on replay mode
+    if args.replay_target == "ee":
+        actions = episode_data["action"].tolist()
+        actions = [np.array(a, dtype=np.float32) for a in actions]
+    else:  # joint mode
+        joint_states = episode_data["observation.states.joint_state"].tolist()
+        joint_states = [np.array(js, dtype=np.float32) for js in joint_states]
 
     # Initialize robot
     logging.info(f"Connecting to robot on port: {args.robot_port}")
@@ -171,43 +233,115 @@ def main():
     if not robot.is_connected:
         raise RuntimeError("Failed to connect to robot!")
 
+    # Get motor names from robot
+    motor_names = list(robot.bus.motors.keys())
+    logging.info(f"Motor names: {motor_names}")
+
+    # Initialize kinematics (needed for EE mode and for displaying current position)
+    logging.info(f"Loading URDF from: {args.urdf_path}")
+    kinematics = RobotKinematics(
+        urdf_path=args.urdf_path,
+        target_frame_name=args.target_frame,
+        joint_names=motor_names,
+    )
+
+    # Build IK pipeline (only needed for EE mode)
+    ee_to_joints_processor = None
+    if args.replay_target == "ee":
+        ee_to_joints_processor = RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction](
+            steps=[
+                InverseKinematicsEEToJoints(
+                    kinematics=kinematics,
+                    motor_names=motor_names,
+                    initial_guess_current_joints=False,  # Open-loop replay
+                ),
+            ],
+            to_transition=robot_action_observation_to_transition,
+            to_output=transition_to_robot_action,
+        )
+
     try:
-        effective_fps = fps / args.slowdown
-        logging.info(f"Replay speed: {args.slowdown}x slowdown (effective FPS: {effective_fps:.1f})")
-        log_say(f"Replaying episode {args.episode_index} with IK", args.play_sounds, blocking=True)
+        # Get current robot observation
+        robot_obs = robot.get_observation()
+        current_joints = np.array([robot_obs[f"{m}.pos"] for m in motor_names])
+        logging.info(f"Current joints: {current_joints}")
 
-        for idx, (_, row) in enumerate(episode_df.iterrows()):
-            start_time = time.perf_counter()
+        # Compute FK to show current EE position
+        from lerobot.utils.rotation import Rotation
 
-            # Get EE action from dataset
-            ee_action = np.array(row["action"], dtype=np.float64)
+        T_current = kinematics.forward_kinematics(current_joints)
+        current_pos = T_current[:3, 3]
+        current_rot = Rotation.from_matrix(T_current[:3, :3]).as_rotvec()
+        logging.info(f"Current EE position: [{current_pos[0]:.4f}, {current_pos[1]:.4f}, {current_pos[2]:.4f}]")
+        logging.info(f"Current EE rotation: [{current_rot[0]:.4f}, {current_rot[1]:.4f}, {current_rot[2]:.4f}]")
 
-            # Get current robot observation for IK initial guess
-            robot_obs = robot.get_observation()
-            current_joints = np.array([
-                robot_obs[f"{motor}.pos"] for motor in ALL_MOTOR_NAMES
-            ], dtype=np.float64)
-
-            # Convert EE action to joint action using IK
-            joint_action = ee_action_to_joint_action(
-                ee_action=ee_action,
-                kinematics=kinematics,
-                current_joints=current_joints,
+        # Get first target joints based on replay mode
+        if args.replay_target == "ee":
+            # Get first target EE action and convert to joints via IK
+            first_ee_action = action_array_to_ee_action(
+                actions[start_frame],
                 translation_offset=translation_offset,
             )
+            logging.info("First target EE position:")
+            logging.info(f"  Position: [{first_ee_action['ee.x']:.4f}, {first_ee_action['ee.y']:.4f}, {first_ee_action['ee.z']:.4f}]")
+            logging.info(f"  Rotation: [{first_ee_action['ee.wx']:.4f}, {first_ee_action['ee.wy']:.4f}, {first_ee_action['ee.wz']:.4f}]")
+            logging.info(f"  Gripper: {first_ee_action['ee.gripper_pos']:.2f}")
+
+            first_joint_action = ee_to_joints_processor((first_ee_action, robot_obs))
+            first_target_joints = np.array([first_joint_action[f"{m}.pos"] for m in motor_names])
+        else:  # joint mode
+            first_target_joints = joint_states[start_frame]
+            logging.info(f"First target joints (from dataset): {first_target_joints}")
+
+        logging.info(f"First target joints: {first_target_joints}")
+
+        if args.confirm_start:
+            confirm = input("\nMove to start position and begin replay? (y/n): ").strip().lower()
+            if confirm != "y":
+                logging.info("Replay cancelled.")
+                return
+
+        # Move to first position with interpolation
+        logging.info(f"Moving to start position over {args.initial_move_duration}s...")
+        dt = args.initial_move_duration / args.initial_move_steps
+        start_joints = current_joints.copy()
+
+        for step in range(args.initial_move_steps + 1):
+            t = step / args.initial_move_steps
+            interp_joints = start_joints + t * (first_target_joints - start_joints)
+            action = {f"{m}.pos": float(interp_joints[i]) for i, m in enumerate(motor_names)}
+            robot.send_action(action)
+            time.sleep(dt)
+
+        logging.info("At start position. Beginning replay...")
+        time.sleep(0.5)
+
+        # Main replay loop
+        for frame_idx in range(start_frame, end_frame):
+            t0 = time.perf_counter()
+
+            if args.replay_target == "ee":
+                # Get EE action from dataset and convert to joints via IK
+                ee_action = action_array_to_ee_action(
+                    actions[frame_idx],
+                    translation_offset=translation_offset,
+                )
+                robot_obs = robot.get_observation()
+                joint_action = ee_to_joints_processor((ee_action, robot_obs))
+            else:  # joint mode
+                # Use recorded joint positions directly
+                joint_action = joint_array_to_joint_action(joint_states[frame_idx], motor_names)
 
             # Send action to robot
-            # robot.send_action(joint_action)
+            robot.send_action(joint_action)
 
-            # Timing with slowdown factor
-            dt_s = time.perf_counter() - start_time
-            target_dt = args.slowdown / fps
-            precise_sleep(max(target_dt - dt_s, 0.0))
+            # Log progress periodically
+            if frame_idx % 100 == 0:
+                logging.info(f"Frame {frame_idx}/{end_frame} ({100 * frame_idx / end_frame:.1f}%)")
 
-            if idx % 50 == 0:
-                logging.info(f"Frame {idx}/{len(episode_df)}, dt={dt_s*1000:.1f}ms")
+            # Wait for next frame
+            precise_sleep(max(1.0 / fps - (time.perf_counter() - t0), 0.0))
 
-        log_say("Replay complete", args.play_sounds, blocking=True)
         logging.info("Replay complete!")
 
     finally:

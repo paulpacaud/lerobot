@@ -362,6 +362,12 @@ def convert_to_pointact_format(
                 # Remove old videos
                 shutil.rmtree(rgb_video_dir)
 
+            # Remove depth videos if they exist
+            depth_video_dir = chunk_dir / "observation.images.front_depth"
+            if depth_video_dir.exists():
+                logging.info(f"Removing depth videos from {chunk_dir.name}...")
+                shutil.rmtree(depth_video_dir)
+
     # Rename point cloud LMDB (just rename the directory reference in info.json)
     # The actual LMDB data doesn't need to change
 
@@ -415,6 +421,12 @@ def convert_to_pointact_format(
     if point_cloud_key in info["features"]:
         pcd_feature = info["features"].pop(point_cloud_key)
         info["features"][output_point_cloud_key] = pcd_feature
+
+    # Remove depth feature (not used in PointAct format)
+    depth_key = "observation.images.front_depth"
+    if depth_key in info["features"]:
+        info["features"].pop(depth_key)
+        logging.info(f"Removed feature: {depth_key}")
 
     # Add conversion metadata
     if "conversion_info" not in info:

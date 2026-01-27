@@ -138,7 +138,7 @@ python examples/post_process_dataset/visualize_ee_trajectory_with_transform.py \
 
 ### 10. Convert to PointAct format
 ```bash
-python examples/post_process_dataset/convert_to_pointact_format.py --dataset_dir=$HOME/lerobot_datasets/put_banana_in_plate_v2 --output_dir=$HOME/lerobot_datasets/put_banana_in_plate_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf --tx=-0.28 --ty=0.03 --tz=0.05
+python examples/post_process_dataset/convert_to_pointact_format.py --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 --output_dir=$HOME/lerobot_datasets/hang_mug_test_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf --tx=-0.2755 --ty=-0.0599 --tz=0.0257
 ```
 
 This converts the dataset to PointAct format with:
@@ -152,7 +152,7 @@ This converts the dataset to PointAct format with:
 
 ### 11. Visualize PointAct dataset
 ```bash
-python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --pcd_frame=0
+python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_pointact --episode_index=0 --pcd_frame=0
 ```
 
 ### 12. Push to Hub
