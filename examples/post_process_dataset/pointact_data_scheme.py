@@ -51,25 +51,25 @@ POINTACT_FEATURES = {
         "shape": (6,),
         "names": {"motors": ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]},
     },
-    # Metadata
+    # Metadata (stored as scalars in parquet)
     "timestamp": {
-        "dtype": "float32",
-        "shape": (1,),
+        "dtype": "float64",
+        "shape": (),
     },
     "frame_index": {
         "dtype": "int64",
-        "shape": (1,),
+        "shape": (),
     },
     "episode_index": {
         "dtype": "int64",
-        "shape": (1,),
+        "shape": (),
     },
     "index": {
         "dtype": "int64",
-        "shape": (1,),
+        "shape": (),
     },
     "task_index": {
         "dtype": "int64",
-        "shape": (1,),
+        "shape": (),
     },
 }
