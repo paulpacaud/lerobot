@@ -27,7 +27,7 @@
 
 ## Commands
 
-### Record dataset
+# Record dataset
 
 lerobot-record \
     --robot.type=so100_follower \
@@ -48,7 +48,7 @@ lerobot-record \
 
 
 
-### 0. Push/pull to hub
+# 0. Push/pull to hub
 huggingface-cli upload ${HF_USER}/hang_mug_test $HOME/lerobot_datasets/hang_mug_test --repo-type dataset
 
 huggingface-cli download paulpacaud/hang_mug_test \
@@ -56,142 +56,44 @@ huggingface-cli download paulpacaud/hang_mug_test \
   --local-dir hang_mug_test \
   --local-dir-use-symlinks False
 
-### 1. Convert v3 to v2 format
+# 1. Convert v3 to v2 format
 ```bash
 python examples/post_process_dataset/convert_lerobot_dataset_v3_to_v2.py \
     --input_dir=$HOME/lerobot_datasets/put_cube_in_spot \
     --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2
 ```
 
-### 2. Define workspace bounds (interactive visualization)
-```bash
-python examples/post_process_dataset/define_workspace.py \
-    --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 \
-    --intrinsics_file=examples/post_process_dataset/constants/intrinsics.npz \
-    --extrinsics_file=examples/post_process_dataset/constants/extrinsics.npz \
-    --x_min=-0.21 --x_max=0.23 --y_min=-0.35 --y_max=0.3 --z_min=0.0 --z_max=0.4
-```
-
-### 3. Add point clouds to dataset
+# 2. Add point clouds to dataset
 ```bash
 python -m examples.post_process_dataset.add_point_cloud_to_dataset \
-    --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 \
+    --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 \
     --voxel_size=0.01
 ```
 
-### 4. Visualize point cloud
-```bash
-python examples/post_process_dataset/visualize_postprocessed_pcd.py \
-    --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 \
-    --episode_index=0 --frame_index=100
-```
-
-### 5. Convert joint-space to EE-space (in the robot frame!)
-```bash
-# Convert to EE space with no translation offset (robot frame)
-python examples/post_process_dataset/convert_joint_to_ee_space.py \
-    --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 \
-    --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_ee \
-    --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf \
-    --tx=0.0 --ty=0.0 --tz=0.0
-```
-
-### 6. Verify FK with RGB image
-```bash
-python examples/post_process_dataset/visualize_robot_fk_with_rgb.py \
-    --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf \
-    --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 \
-    --episode_index=0 \
-    --frame_index=125
-```
-
-### 7. Find robot-to-world transform
-```bash
-# Visualize EE trajectory on point cloud with translation offset
-python examples/post_process_dataset/visualize_ee_trajectory_with_transform.py \
-    --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_ee \
-    --episode_index=0 \
-    --pcd_frame=0 \
-    --tx=-0.28 --ty=0.03 --tz=0.05
-```
-
-### 8. (Again) Convert joint-space to EE-space (but in the world frame!)
-```bash
-# Convert to EE space with translation offset (world frame)
-# Use the offset found in step 7
-python examples/post_process_dataset/convert_joint_to_ee_space.py \
-    --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 \
-    --output_dir=$HOME/lerobot_datasets/hang_mug_test_v2_ee \
-    --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf \
-    --tx=-0.2755 --ty=-0.0599 --tz=0.0257
-```
-
-### 9. (sanity check) Check what you got
-```bash
-# Visualize EE trajectory on point cloud with translation offset
-python examples/post_process_dataset/visualize_ee_trajectory_with_transform.py \
-    --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2_ee \
-    --episode_index=0 \
-    --pcd_frame=0 \
-    --tx=-0 --ty=0 --tz=0
-```
-
-### 10. Convert to PointAct format
+# 3. Convert to PointAct format
 ```bash
 python -m examples.post_process_dataset.convert_to_pointact_format --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_v2 --output_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
 ```
 
-Note: The robot-to-world translation offset is defined in `constants/constants.py` as `ROBOT_FRAME`.
-
-This converts the dataset to PointAct format with:
-- `observation.state`: (7,) [x, y, z, axis_angle1-3, gripper]
-- `observation.states.ee_state`: (6,) [x, y, z, axis_angle1-3]
-- `observation.states.joint_state`: (6,) joint positions (including gripper)
-- `observation.states.gripper_state`: (1,) gripper openness
-- `action`: (7,) [x, y, z, axis_angle1-3, gripper]
-- `observation.images.front_image`: (256, 256, 3) resized video
-- `observation.points.frontview`: point cloud data
-
-### 11. Visualize PointAct dataset
+# 4. Visualize PointAct dataset
 ```bash
-python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_pointact --episode_index=3 --pcd_frame=250
+python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --pcd_frame=250
 ```
 
-### 12. Replay episode
+# 5. Replay episode
 
 xdg-open /home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact/videos/chunk-000/observation.images.front_image/episode_000000.mp4
 
-# Direct joint replay (no IK)                                                                                                                                                                                                                                                                                                                                                     
+## Direct joint replay (no IK)                                                                                                                                                                                                                                                                                                                                                     
 python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=joint 
 
-# EE cartesian replay with IK                                                                                                                                                                                                                                                                                                                                                     
+## EE cartesian replay with IK                                                                                                                                                                                                                                                                                                                                                     
 python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=ee                                                                                                                                                                                    
-                                                                                                                                                                                                                                                                                                                                                                                    
 
-
-### 13. Push to Hub
+# 6. Push to Hub
 huggingface-cli upload ${HF_USER}/hang_mug_test_pointact $HOME/lerobot_datasets/hang_mug_test_pointact --repo-type dataset
 
 huggingface-cli download paulpacaud/put_cube_in_spot_pointact \
   --repo-type dataset \
   --local-dir put_cube_in_spot_pointact \
   --local-dir-use-symlinks False
-
-## Notes
-
-### Calibration
-The `convert_joint_to_ee_space.py` script uses forward kinematics with the robot URDF. The URDF joint zeros must match the calibration conventions used when recording the dataset. Use the `so101_new_calib.urdf` from the SO-ARM100 repository for best results.
-
-### Robot-to-World Transform
-The EE positions from FK are in the robot base frame. To align with point clouds (which are in world frame), you need to find the transform:
-```
-ee_world = ee_robot + translation_offset
-```
-Use `visualize_ee_trajectory_with_transform.py` to manually find this offset by adjusting `--tx`, `--ty`, `--tz` until the trajectory aligns with the gripper in the point cloud.
-
-
-
-
-
-python examples/post_process_dataset/goto_ee_position.py --robot_port=/dev/ttyACM0 --tx=-0.28 --ty=0 --tz=0.05 --duration 50
-python examples/post_process_dataset/read_ee_position.py --robot_port=/dev/ttyACM0

@@ -39,11 +39,17 @@ POINTACT_FEATURES = {
         "shape": (1,),
         "names": {"motors": ["gripper_openness"]},
     },
-    # Action - commanded/target action at time t (what the robot should do)
+    # Action (EE space) - commanded/target action at time t (what the robot should do)
     "action": {
         "dtype": "float32",
         "shape": (7,),
         "names": {"motors": ["x", "y", "z", "axis_angle1", "axis_angle2", "axis_angle3", "gripper_openness"]},
+    },
+    # Action (joint space) - original joint commands for replay
+    "action.joints": {
+        "dtype": "float32",
+        "shape": (6,),
+        "names": {"motors": ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]},
     },
     # Metadata
     "timestamp": {

@@ -12,6 +12,51 @@ converts it to the PointAct format which includes:
 - Removal of depth images
 - Auto-trimming of idle frames at episode start/end
 
+Trimming explanation:
+trim_threshold_factor
+Suppose your deltas are: [0.001, 0.05, 0.04, 0.06, 0.001, 0.05, 0.001]
+                                ↑                      ↑           ↑
+                              idle?                  idle?       idle?
+
+  Median of non-zero deltas ≈ 0.05
+
+  With trim_threshold_factor = 0.1 (default):
+    threshold = 0.05 × 0.1 = 0.005
+
+    → 0.001 < 0.005  → IDLE
+    → 0.05  > 0.005  → MOVING
+    → 0.04  > 0.005  → MOVING
+
+Effect of different values:
+  ┌───────────────┬─────────────────┬───────────────────────────────────────────────────────┐
+  │     Value     │    Threshold    │                        Effect                         │
+  ├───────────────┼─────────────────┼───────────────────────────────────────────────────────┤
+  │ 0.05          │ 0.25% of median │ Very strict - only truly stationary frames are "idle" │
+  ├───────────────┼─────────────────┼───────────────────────────────────────────────────────┤
+  │ 0.1 (default) │ 10% of median   │ Balanced - small movements count as idle              │
+  ├───────────────┼─────────────────┼───────────────────────────────────────────────────────┤
+  │ 0.3           │ 30% of median   │ Aggressive - slow movements also count as idle        │
+  └───────────────┴─────────────────┴───────────────────────────────────────────────────────┘
+
+How it works:
+
+  1. The algorithm computes the movement delta between each consecutive frame
+  2. Frames with delta below the threshold are marked as "idle"
+  3. It finds contiguous runs of idle frames (idle segments)
+  4. Only idle segments with length >= min_idle_segment get trimmed
+
+  Example with min_idle_segment=5 (default):
+
+  Frame:    0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15
+  Movement: M  M  I  I  I  M  M  I  I  I  I  I  I  M  M  M
+                  ─────        ───────────────────
+                  3 idle         7 idle frames
+                  frames         → TRIMMED (≥5)
+                  → KEPT (<5)
+
+  - The 3-frame idle segment (frames 2-4) is kept because 3 < 5
+  - The 7-frame idle segment (frames 7-13) is trimmed because 7 ≥ 5
+
 Input format (joint space):
     observation.state: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
     action: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
@@ -84,7 +129,9 @@ class Args(Tap):
 
     # Idle frame trimming
     no_trim_idle_frames: bool = False  # Disable trimming of idle frames at episode start/end
-    trim_threshold_factor: float = 0.1  # Threshold = median(deltas) * this factor
+    trim_threshold_factor: float = 0.05  # Threshold = median(deltas) * this factor
+    min_idle_segment: int = 5  # Minimum consecutive idle frames to consider for removal
+    keep_frames_per_idle: int = 1  # Number of frames to keep from each internal idle segment
 
     # Data keys (input)
     state_key: str = "observation.state"
@@ -137,28 +184,77 @@ def save_episodes_v21(root: Path, episodes: list[dict]) -> None:
             writer.write(ep)
 
 
-def compute_trim_boundaries(
-    states: np.ndarray, threshold_factor: float = 0.1
-) -> tuple[int, int, float, list[float]]:
-    """
-    Compute trim boundaries based on state deltas.
+def load_episodes_v30(root: Path) -> list[dict]:
+    """Load episodes metadata from v3.0 parquet format."""
+    episodes_dir = root / "meta" / "episodes"
+    episodes = []
 
-    Only trims from the beginning and end of the episode. All frames between
-    the first and last active frames are kept regardless of their delta values.
+    for chunk_dir in sorted(episodes_dir.glob("chunk-*")):
+        for parquet_file in sorted(chunk_dir.glob("*.parquet")):
+            df = pd.read_parquet(parquet_file)
+            for _, row in df.iterrows():
+                ep = row.to_dict()
+                episodes.append(ep)
+
+    return sorted(episodes, key=lambda x: x["episode_index"])
+
+
+def save_episodes_v30(root: Path, episodes: list[dict]) -> None:
+    """Save episodes metadata to v3.0 parquet format."""
+    episodes_dir = root / "meta" / "episodes"
+
+    # Load existing structure to preserve chunk organization
+    # For simplicity, write all episodes to chunk-000/file-000.parquet
+    chunk_dir = episodes_dir / "chunk-000"
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+
+    df = pd.DataFrame(episodes)
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    pq.write_table(table, chunk_dir / "file-000.parquet")
+
+
+def load_episodes(root: Path, version: str) -> list[dict]:
+    """Load episodes metadata based on dataset version."""
+    if version.startswith("v3"):
+        return load_episodes_v30(root)
+    else:
+        return load_episodes_v21(root)
+
+
+def save_episodes(root: Path, episodes: list[dict], version: str) -> None:
+    """Save episodes metadata based on dataset version."""
+    if version.startswith("v3"):
+        save_episodes_v30(root, episodes)
+    else:
+        save_episodes_v21(root, episodes)
+
+
+def compute_frames_to_keep(
+    states: np.ndarray,
+    threshold_factor: float = 0.1,
+    min_idle_segment: int = 5,
+    keep_frames_per_idle: int = 1,
+) -> tuple[list[int], float, list[float], dict]:
+    """
+    Compute which frames to keep, removing idle segments throughout the trajectory.
+
+    Removes idle segments at start, end, AND within the trajectory.
 
     Args:
         states: Array of shape (N, state_dim) with state values
         threshold_factor: Threshold = median(deltas) * threshold_factor
+        min_idle_segment: Minimum consecutive idle frames to consider for removal
+        keep_frames_per_idle: Number of frames to keep from each internal idle segment
 
     Returns:
         Tuple of:
-            - first_active: First frame index with significant movement
-            - last_active: Last frame index with significant movement
+            - frames_to_keep: Sorted list of frame indices to keep
             - threshold: The computed threshold value
             - deltas: List of delta norms for each frame
+            - trim_info: Dict with details about what was trimmed
     """
     if len(states) < 2:
-        return 0, len(states) - 1, 0.0, [0.0]
+        return list(range(len(states))), 0.0, [0.0], {"idle_segments": []}
 
     # Compute state deltas (norm of difference between consecutive frames)
     deltas = []
@@ -172,32 +268,92 @@ def compute_trim_boundaries(
     non_zero_deltas = [d for d in deltas if d > 1e-8]
     if len(non_zero_deltas) == 0:
         # No movement at all, keep all frames
-        return 0, len(states) - 1, 0.0, deltas
+        return list(range(len(states))), 0.0, deltas, {"idle_segments": []}
 
     median_delta = np.median(non_zero_deltas)
     threshold = median_delta * threshold_factor
 
-    # Find first active frame (scanning from start)
-    first_active = 0
-    for i in range(len(deltas)):
-        if deltas[i] > threshold:
-            first_active = i
-            break
+    # Mark frames as active (delta > threshold) or idle
+    is_active = [d > threshold for d in deltas]
 
-    # Find last active frame (scanning from end)
-    last_active = len(states) - 1
-    for i in range(len(deltas) - 1, -1, -1):
-        if deltas[i] > threshold:
-            # The last active frame is the one AFTER the last significant delta
-            last_active = min(i + 1, len(states) - 1)
-            break
+    # Find contiguous idle segments
+    idle_segments = []
+    i = 0
+    while i < len(is_active):
+        if not is_active[i]:
+            # Start of idle segment
+            start = i
+            while i < len(is_active) and not is_active[i]:
+                i += 1
+            end = i  # exclusive
+            idle_segments.append((start, end))
+        else:
+            i += 1
 
-    # Ensure valid range
-    if first_active > last_active:
-        first_active = 0
-        last_active = len(states) - 1
+    # Determine frames to remove
+    frames_to_remove = set()
+    segment_info = []
 
-    return first_active, last_active, threshold, deltas
+    for start, end in idle_segments:
+        segment_length = end - start
+        is_at_start = start == 0
+        is_at_end = end == len(states)
+
+        if segment_length >= min_idle_segment:
+            if is_at_start:
+                # Trim from beginning, keep only last frame of segment
+                for j in range(start, end - 1):
+                    frames_to_remove.add(j)
+                segment_info.append({
+                    "type": "start",
+                    "range": (start, end),
+                    "original_length": segment_length,
+                    "frames_removed": segment_length - 1,
+                })
+            elif is_at_end:
+                # Trim from end, keep only first frame of segment
+                for j in range(start + 1, end):
+                    frames_to_remove.add(j)
+                segment_info.append({
+                    "type": "end",
+                    "range": (start, end),
+                    "original_length": segment_length,
+                    "frames_removed": segment_length - 1,
+                })
+            else:
+                # Middle segment - keep only a few frames for continuity
+                frames_to_keep_in_segment = min(keep_frames_per_idle, segment_length)
+                if frames_to_keep_in_segment == 1:
+                    # Keep middle frame
+                    keep_indices = {start + segment_length // 2}
+                else:
+                    # Spread frames evenly
+                    step = segment_length / (frames_to_keep_in_segment + 1)
+                    keep_indices = {start + int(step * (k + 1)) for k in range(frames_to_keep_in_segment)}
+
+                for j in range(start, end):
+                    if j not in keep_indices:
+                        frames_to_remove.add(j)
+
+                segment_info.append({
+                    "type": "middle",
+                    "range": (start, end),
+                    "original_length": segment_length,
+                    "frames_removed": segment_length - len(keep_indices),
+                    "frames_kept": sorted(keep_indices),
+                })
+
+    frames_to_keep = sorted([i for i in range(len(states)) if i not in frames_to_remove])
+
+    trim_info = {
+        "idle_segments": segment_info,
+        "total_idle_segments": len(idle_segments),
+        "segments_trimmed": len(segment_info),
+        "threshold": threshold,
+        "median_delta": median_delta,
+    }
+
+    return frames_to_keep, threshold, deltas, trim_info
 
 
 def joints_to_ee(
@@ -263,8 +419,7 @@ def resize_and_trim_video_file(
     input_path: Path,
     output_path: Path,
     target_size: int,
-    start_frame: int = 0,
-    end_frame: int | None = None,
+    frames_to_keep: list[int] | None = None,
 ) -> int:
     """
     Resize and optionally trim video file.
@@ -273,8 +428,7 @@ def resize_and_trim_video_file(
         input_path: Path to input video
         output_path: Path to output video
         target_size: Target square size
-        start_frame: First frame to include (0-indexed)
-        end_frame: Last frame to include (exclusive), None for all frames
+        frames_to_keep: List of frame indices to keep (0-indexed), None for all frames
 
     Returns:
         Number of frames written
@@ -282,16 +436,17 @@ def resize_and_trim_video_file(
     import av
     from fractions import Fraction
 
+    # Convert to set for O(1) lookup
+    keep_set = set(frames_to_keep) if frames_to_keep is not None else None
+
     # Read input video
     frames = []
     with av.open(str(input_path)) as container:
         stream = container.streams.video[0]
         original_fps = stream.average_rate  # Keep as Fraction
         for frame_idx, frame in enumerate(container.decode(video=0)):
-            if frame_idx < start_frame:
+            if keep_set is not None and frame_idx not in keep_set:
                 continue
-            if end_frame is not None and frame_idx >= end_frame:
-                break
             img = frame.to_ndarray(format="rgb24")
             img_resized = cv2.resize(img, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
             frames.append(img_resized)
@@ -321,16 +476,15 @@ def resize_and_trim_video_file(
 
 def trim_lmdb_point_clouds(
     lmdb_path: Path,
-    episode_trims: dict[int, tuple[int, int, int]],
+    episode_frames_to_keep: dict[int, tuple[list[int], int]],
 ) -> None:
     """
     Trim LMDB point clouds by removing entries for trimmed frames and reindexing.
 
     Args:
         lmdb_path: Path to the LMDB directory
-        episode_trims: Dict mapping episode_index to (trim_start, trim_end, original_length)
-                       where trim_start is the new first frame index in original indexing,
-                       and trim_end is the new last frame index (exclusive) in original indexing
+        episode_frames_to_keep: Dict mapping episode_index to (frames_to_keep, original_length)
+                                where frames_to_keep is a list of frame indices to keep
     """
     if not lmdb_path.exists():
         logging.info("No LMDB point clouds to trim")
@@ -350,6 +504,11 @@ def trim_lmdb_point_clouds(
     entries_copied = 0
     entries_removed = 0
 
+    # Build reindex maps for each episode: old_frame_idx -> new_frame_idx
+    reindex_maps = {}
+    for ep_idx, (frames_to_keep, _) in episode_frames_to_keep.items():
+        reindex_maps[ep_idx] = {old_idx: new_idx for new_idx, old_idx in enumerate(frames_to_keep)}
+
     with src_env.begin() as src_txn:
         with dst_env.begin(write=True) as dst_txn:
             cursor = src_txn.cursor()
@@ -366,21 +525,20 @@ def trim_lmdb_point_clouds(
                 ep_idx = int(parts[0])
                 frame_idx = int(parts[1])
 
-                if ep_idx not in episode_trims:
+                if ep_idx not in reindex_maps:
                     # Episode not trimmed, keep all frames
                     dst_txn.put(key, value)
                     entries_copied += 1
                     continue
 
-                trim_start, trim_end, original_length = episode_trims[ep_idx]
-
-                if frame_idx < trim_start or frame_idx >= trim_end:
+                reindex_map = reindex_maps[ep_idx]
+                if frame_idx not in reindex_map:
                     # Frame was trimmed
                     entries_removed += 1
                     continue
 
-                # Reindex frame: new_frame_idx = frame_idx - trim_start
-                new_frame_idx = frame_idx - trim_start
+                # Reindex frame
+                new_frame_idx = reindex_map[frame_idx]
                 new_key = f"{ep_idx}-{new_frame_idx}".encode("ascii")
                 dst_txn.put(new_key, value)
                 entries_copied += 1
@@ -404,6 +562,8 @@ def convert_to_pointact_format(
     image_size: int = 256,
     trim_idle_frames: bool = True,
     trim_threshold_factor: float = 0.1,
+    min_idle_segment: int = 5,
+    keep_frames_per_idle: int = 1,
     state_key: str = "observation.state",
     action_key: str = "action",
     rgb_key: str = "observation.images.front",
@@ -426,8 +586,10 @@ def convert_to_pointact_format(
         target_frame: Name of the EE frame in URDF
         joint_names: List of joint names for FK
         image_size: Target image size (square)
-        trim_idle_frames: Enable trimming of idle frames at episode start/end
+        trim_idle_frames: Enable trimming of idle frames
         trim_threshold_factor: Threshold = median(deltas) * this factor
+        min_idle_segment: Minimum consecutive idle frames to consider for removal
+        keep_frames_per_idle: Number of frames to keep from each internal idle segment
         state_key: Input state key
         action_key: Input action key
         rgb_key: Input RGB image key
@@ -460,6 +622,8 @@ def convert_to_pointact_format(
     logging.info(f"Trim idle frames: {trim_idle_frames}")
     if trim_idle_frames:
         logging.info(f"Trim threshold factor: {trim_threshold_factor}")
+        logging.info(f"Min idle segment length: {min_idle_segment}")
+        logging.info(f"Frames to keep per idle segment: {keep_frames_per_idle}")
 
     tx, ty, tz = ROBOT_FRAME['tx'], ROBOT_FRAME['ty'], ROBOT_FRAME['tz']
     translation_offset = np.array([tx, ty, tz], dtype=np.float64)
@@ -508,14 +672,14 @@ def convert_to_pointact_format(
     logging.info(f"Found {len(parquet_files)} parquet files")
 
     # Load all episodes metadata
-    episodes = load_episodes_v21(dataset_path)
+    episodes = load_episodes(dataset_path, version)
     logging.info(f"Found {len(episodes)} episodes")
 
-    # First pass: Load all data, compute FK, and determine trim boundaries per episode
-    logging.info("First pass: Computing FK and trim boundaries...")
+    # First pass: Load all data, compute FK, and determine frames to keep per episode
+    logging.info("First pass: Computing FK and determining frames to keep...")
 
-    # Dict to store trim info: {episode_idx: (trim_start, trim_end, original_length)}
-    episode_trims: dict[int, tuple[int, int, int]] = {}
+    # Dict to store trim info: {episode_idx: (frames_to_keep, original_length, trim_info)}
+    episode_frames_to_keep: dict[int, tuple[list[int], int, dict]] = {}
 
     # Dict to store episode data: {episode_idx: DataFrame}
     episode_data: dict[int, pd.DataFrame] = {}
@@ -565,63 +729,99 @@ def convert_to_pointact_format(
         ep_df[output_gripper_state_key] = gripper_states
         episode_data[episode_idx] = ep_df
 
-        # Compute trim boundaries if enabled
+        # Compute frames to keep if trimming is enabled
         original_length = len(ep_df)
         if trim_idle_frames:
             states_array = np.array(new_states)
-            trim_start, trim_end, threshold, deltas = compute_trim_boundaries(
-                states_array, trim_threshold_factor
+            frames_to_keep, threshold, deltas, trim_info = compute_frames_to_keep(
+                states_array, trim_threshold_factor, min_idle_segment, keep_frames_per_idle
             )
-            # trim_end is the index of the last frame to keep, we need exclusive end
-            trim_end_exclusive = trim_end + 1
-            episode_trims[episode_idx] = (trim_start, trim_end_exclusive, original_length)
+            episode_frames_to_keep[episode_idx] = (frames_to_keep, original_length, trim_info)
         else:
-            episode_trims[episode_idx] = (0, original_length, original_length)
+            episode_frames_to_keep[episode_idx] = (list(range(original_length)), original_length, {})
 
     # Print trim report
     if trim_idle_frames:
         logging.info("")
+        logging.info("=" * 60)
         logging.info("=== Idle Frame Trimming Report ===")
+        logging.info("=" * 60)
         total_original = 0
-        total_trimmed = 0
-        boundary_deltas = []
+        total_kept = 0
+        total_start_trimmed = 0
+        total_end_trimmed = 0
+        total_middle_trimmed = 0
+        total_middle_segments = 0
 
-        for episode_idx in sorted(episode_trims.keys()):
-            trim_start, trim_end, original_length = episode_trims[episode_idx]
-            new_length = trim_end - trim_start
-            frames_from_start = trim_start
-            frames_from_end = original_length - trim_end
+        for episode_idx in sorted(episode_frames_to_keep.keys()):
+            frames_to_keep, original_length, trim_info = episode_frames_to_keep[episode_idx]
+            new_length = len(frames_to_keep)
+            frames_removed = original_length - new_length
             total_original += original_length
-            total_trimmed += new_length
+            total_kept += new_length
 
+            # Count by segment type
+            start_removed = 0
+            end_removed = 0
+            middle_removed = 0
+            middle_count = 0
+
+            for seg in trim_info.get("idle_segments", []):
+                seg_type = seg.get("type", "")
+                removed = seg.get("frames_removed", 0)
+                if seg_type == "start":
+                    start_removed += removed
+                    total_start_trimmed += removed
+                elif seg_type == "end":
+                    end_removed += removed
+                    total_end_trimmed += removed
+                elif seg_type == "middle":
+                    middle_removed += removed
+                    middle_count += 1
+                    total_middle_trimmed += removed
+                    total_middle_segments += 1
+
+            # Build detailed message
+            details = []
+            if start_removed > 0:
+                details.append(f"start: -{start_removed}")
+            if end_removed > 0:
+                details.append(f"end: -{end_removed}")
+            if middle_removed > 0:
+                details.append(f"middle: -{middle_removed} ({middle_count} segments)")
+
+            detail_str = ", ".join(details) if details else "no trimming"
             logging.info(
                 f"Episode {episode_idx}: {original_length} -> {new_length} frames "
-                f"(trimmed {frames_from_start} from start, {frames_from_end} from end)"
+                f"(-{frames_removed}) [{detail_str}]"
             )
 
-            # Compute boundary deltas for verification
-            if episode_idx in episode_data:
-                ep_df = episode_data[episode_idx]
-                states_array = np.array(ep_df[state_key].tolist())
-                if trim_start < len(states_array) - 1:
-                    start_delta = np.linalg.norm(states_array[trim_start + 1] - states_array[trim_start])
-                    boundary_deltas.append(start_delta)
-                if trim_end - 1 > 0 and trim_end - 1 < len(states_array):
-                    end_delta = np.linalg.norm(
-                        states_array[trim_end - 1] - states_array[max(0, trim_end - 2)]
+            # Log detailed middle segment info for debugging
+            for seg in trim_info.get("idle_segments", []):
+                if seg.get("type") == "middle":
+                    seg_range = seg.get("range", (0, 0))
+                    seg_len = seg.get("original_length", 0)
+                    removed = seg.get("frames_removed", 0)
+                    kept_frames = seg.get("frames_kept", [])
+                    logging.info(
+                        f"  - Middle idle segment: frames {seg_range[0]}-{seg_range[1]} "
+                        f"({seg_len} frames), removed {removed}, kept {len(kept_frames)}"
                     )
-                    boundary_deltas.append(end_delta)
 
-        frames_removed = total_original - total_trimmed
-        pct_trimmed = 100.0 * frames_removed / total_original if total_original > 0 else 0.0
+        frames_removed_total = total_original - total_kept
+        pct_trimmed = 100.0 * frames_removed_total / total_original if total_original > 0 else 0.0
+
         logging.info("")
-        logging.info(f"Total: {total_original} -> {total_trimmed} frames ({pct_trimmed:.1f}% trimmed)")
-
-        if boundary_deltas:
-            logging.info(
-                f"Boundary deltas after trim: min={min(boundary_deltas):.6f}, "
-                f"max={max(boundary_deltas):.6f}, mean={np.mean(boundary_deltas):.6f}"
-            )
+        logging.info("=" * 60)
+        logging.info("=== Summary ===")
+        logging.info(f"Total frames: {total_original} -> {total_kept} ({pct_trimmed:.1f}% trimmed)")
+        logging.info(f"  - Start trimming: {total_start_trimmed} frames removed")
+        logging.info(f"  - End trimming: {total_end_trimmed} frames removed")
+        logging.info(
+            f"  - Middle trimming: {total_middle_trimmed} frames removed "
+            f"({total_middle_segments} idle segments)"
+        )
+        logging.info("=" * 60)
         logging.info("")
 
     # Second pass: Apply trimming and write parquet files
@@ -648,10 +848,10 @@ def convert_to_pointact_format(
             continue
 
         ep_df = episode_data[ep_idx]
-        trim_start, trim_end, original_length = episode_trims[ep_idx]
+        frames_to_keep, original_length, trim_info = episode_frames_to_keep[ep_idx]
 
-        # Apply trim
-        trimmed_df = ep_df.iloc[trim_start:trim_end].copy()
+        # Apply trim - select only the frames to keep
+        trimmed_df = ep_df.iloc[frames_to_keep].copy()
 
         # Update frame_index to be 0-indexed from new start
         trimmed_df["frame_index"] = range(len(trimmed_df))
@@ -673,11 +873,11 @@ def convert_to_pointact_format(
     logging.info("Updating episode metadata...")
     for ep in episodes:
         ep_idx = ep["episode_index"]
-        if ep_idx in episode_trims:
-            trim_start, trim_end, original_length = episode_trims[ep_idx]
-            ep["length"] = trim_end - trim_start
+        if ep_idx in episode_frames_to_keep:
+            frames_to_keep, original_length, trim_info = episode_frames_to_keep[ep_idx]
+            ep["length"] = len(frames_to_keep)
 
-    save_episodes_v21(dataset_path, episodes)
+    save_episodes(dataset_path, episodes, version)
 
     # Resize and trim videos
     logging.info("Resizing and trimming videos...")
@@ -698,14 +898,14 @@ def convert_to_pointact_format(
 
                     new_video_file = new_video_dir / video_file.name
 
-                    if ep_idx is not None and ep_idx in episode_trims:
-                        trim_start, trim_end, original_length = episode_trims[ep_idx]
+                    if ep_idx is not None and ep_idx in episode_frames_to_keep:
+                        frames_to_keep, original_length, trim_info = episode_frames_to_keep[ep_idx]
                         logging.info(
                             f"Resizing and trimming {video_file.name} "
-                            f"(frames {trim_start}-{trim_end} of {original_length})..."
+                            f"(keeping {len(frames_to_keep)} of {original_length} frames)..."
                         )
                         resize_and_trim_video_file(
-                            video_file, new_video_file, image_size, trim_start, trim_end
+                            video_file, new_video_file, image_size, frames_to_keep
                         )
                     else:
                         logging.info(f"Resizing {video_file.name}...")
@@ -717,7 +917,12 @@ def convert_to_pointact_format(
     # Trim LMDB point clouds if they exist
     lmdb_path = dataset_path / "point_clouds"
     if lmdb_path.exists() and trim_idle_frames:
-        trim_lmdb_point_clouds(lmdb_path, episode_trims)
+        # Convert to the format expected by trim_lmdb_point_clouds
+        lmdb_trim_data = {
+            ep_idx: (frames, orig_len)
+            for ep_idx, (frames, orig_len, _) in episode_frames_to_keep.items()
+        }
+        trim_lmdb_point_clouds(lmdb_path, lmdb_trim_data)
 
     # Update info.json with new feature definitions
     ee_names = ["x", "y", "z", "axis_angle1", "axis_angle2", "axis_angle3"]
@@ -791,6 +996,8 @@ def convert_to_pointact_format(
         "image_size": image_size,
         "trim_idle_frames": trim_idle_frames,
         "trim_threshold_factor": trim_threshold_factor if trim_idle_frames else None,
+        "min_idle_segment": min_idle_segment if trim_idle_frames else None,
+        "keep_frames_per_idle": keep_frames_per_idle if trim_idle_frames else None,
     }
 
     save_info(dataset_path, info)
@@ -819,6 +1026,8 @@ if __name__ == "__main__":
         image_size=args.image_size,
         trim_idle_frames=not args.no_trim_idle_frames,
         trim_threshold_factor=args.trim_threshold_factor,
+        min_idle_segment=args.min_idle_segment,
+        keep_frames_per_idle=args.keep_frames_per_idle,
         state_key=args.state_key,
         action_key=args.action_key,
         rgb_key=args.rgb_key,

@@ -40,7 +40,7 @@ class Args(Tap):
     robot_id: str = "follower_arm"  # Robot identifier
     urdf_path: str = DEFAULT_URDF_PATH  # Path to the robot URDF file
     target_frame: str = "gripper_frame_link"  # End-effector frame in URDF
-    use_degrees: bool = True  # Use degrees for motor control
+    use_degrees: bool = False  # Use degrees for motor control (default matches SO100FollowerConfig)
     duration: float = 5.0  # Duration in seconds to reach target
     steps: int = 100  # Number of interpolation steps
 
