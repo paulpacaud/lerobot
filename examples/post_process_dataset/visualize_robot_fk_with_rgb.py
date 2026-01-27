@@ -208,7 +208,7 @@ def main():
     axes[1].axis("off")
 
     plt.tight_layout()
-    plt.savefig(f"fk_comparison_ep{args.episode_index}_frame{args.frame_index}.png", dpi=150)
+    plt.savefig(f"examples/post_process_dataset/viz_outputs/fk_comparison_ep{args.episode_index}_frame{args.frame_index}.png", dpi=150)
     print(f"Saved: fk_comparison_ep{args.episode_index}_frame{args.frame_index}.png")
     plt.show()
 
