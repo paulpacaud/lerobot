@@ -2,13 +2,13 @@
 #SBATCH --job-name=groot1.5_train
 #SBATCH -A hjx@h100
 #SBATCH -C h100
-#SBATCH --qos=qos_gpu_h100-t3
+#SBATCH --qos=qos_gpu_h100-dev
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=24
 #SBATCH --hint=nomultithread
-#SBATCH --time=10:00:00
+#SBATCH --time=00:30:00
 #SBATCH --output=slurm_logs/%j.out
 #SBATCH --error=slurm_logs/%j.out
 
@@ -58,17 +58,19 @@ echo ""
 export HF_LEROBOT_HOME="$SCRATCH/data/lerobot"
 export WANDB_MODE=offline
 
+TRAIN_DATASET="${TRAIN_DATASET:-data_v3_3tasks}"
+
 # Generate timestamp for unique output directory
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="$SCRATCH/data/lerobot/outputs/train/groot1.5_put_fruits_in_plate_${TIMESTAMP}"
+OUTPUT_DIR="$SCRATCH/data/lerobot/outputs/train/groot1.5_$TRAIN_DATASET_${TIMESTAMP}"
 echo "Output directory: $OUTPUT_DIR"
 
 python src/lerobot/scripts/lerobot_train.py \
     --dataset.repo_id=local \
-    --dataset.root="$SCRATCH/data/lerobot/put_fruits_in_plate" \
+    --dataset.root="$SCRATCH/data/lerobot/$TRAIN_DATASET" \
     --policy.type=groot \
     --output_dir="$OUTPUT_DIR" \
-    --job_name=groot1.5_training_put_fruits_in_plate \
+    --job_name="groot1.5_training_$TRAIN_DATASET" \
     --policy.tune_llm=false \
     --policy.tune_visual=false \
     --policy.tune_projector=true \

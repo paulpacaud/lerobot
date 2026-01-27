@@ -5,6 +5,7 @@ set -e
 
 cd "$WORK/Projects/lerobot"
 
+
 module purge
 module load miniforge
 
