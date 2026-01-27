@@ -59,8 +59,8 @@ huggingface-cli download paulpacaud/hang_mug_test \
 ### 1. Convert v3 to v2 format
 ```bash
 python examples/post_process_dataset/convert_lerobot_dataset_v3_to_v2.py \
-    --input_dir=$HOME/lerobot_datasets/hang_mug_test \
-    --output_dir=$HOME/lerobot_datasets/hang_mug_test_v2
+    --input_dir=$HOME/lerobot_datasets/put_cube_in_spot \
+    --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2
 ```
 
 ### 2. Define workspace bounds (interactive visualization)
@@ -138,7 +138,7 @@ python examples/post_process_dataset/visualize_ee_trajectory_with_transform.py \
 
 ### 10. Convert to PointAct format
 ```bash
-python -m examples.post_process_dataset.convert_to_pointact_format --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 --output_dir=$HOME/lerobot_datasets/hang_mug_test_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
+python -m examples.post_process_dataset.convert_to_pointact_format --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_v2 --output_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
 ```
 
 Note: The robot-to-world translation offset is defined in `constants/constants.py` as `ROBOT_FRAME`.
@@ -154,10 +154,22 @@ This converts the dataset to PointAct format with:
 
 ### 11. Visualize PointAct dataset
 ```bash
-python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_pointact --episode_index=0 --pcd_frame=0
+python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_pointact --episode_index=3 --pcd_frame=250
 ```
 
-### 12. Push to Hub
+### 12. Replay episode
+
+xdg-open /home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact/videos/chunk-000/observation.images.front_image/episode_000000.mp4
+
+# Direct joint replay (no IK)                                                                                                                                                                                                                                                                                                                                                     
+python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=joint 
+
+# EE cartesian replay with IK                                                                                                                                                                                                                                                                                                                                                     
+python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=ee                                                                                                                                                                                    
+                                                                                                                                                                                                                                                                                                                                                                                    
+
+
+### 13. Push to Hub
 huggingface-cli upload ${HF_USER}/hang_mug_test_pointact $HOME/lerobot_datasets/hang_mug_test_pointact --repo-type dataset
 
 huggingface-cli download paulpacaud/put_cube_in_spot_pointact \

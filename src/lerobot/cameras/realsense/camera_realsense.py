@@ -500,17 +500,6 @@ class RealSenseCamera(Camera):
         read_duration_ms = (time.perf_counter() - start_time) * 1e3
         logger.debug(f"{self} read_color_and_depth took: {read_duration_ms:.1f}ms")
 
-        # Debug: log depth statistics every 30 frames
-        if self._capture_count % 30 == 0:
-            valid_depth = depth_map_processed[depth_map_processed > 0]
-            if len(valid_depth) > 0:
-                depth_mean = valid_depth.mean()
-                logger.info(
-                    f"{self} capture #{self._capture_count}: ts_diff={ts_diff_ms:.1f}ms, "
-                    f"color_frame={color_frame_num}, depth_frame={depth_frame_num}, "
-                    f"depth_mean={depth_mean:.0f}mm"
-                )
-
         return color_image_processed, depth_map_processed
 
     def read(self, color_mode: ColorMode | None = None, timeout_ms: int = 200) -> NDArray[Any]:
@@ -821,21 +810,6 @@ class RealSenseCamera(Camera):
         self._read_count += 1
         valid_depth = depth_frame[depth_frame > 0]
         read_depth_mean = valid_depth.mean() if len(valid_depth) > 0 else 0
-
-        # Log every 30 reads for debugging
-        if self._read_count % 30 == 0:
-            logger.info(
-                f"{self} read #{self._read_count}: capture_count={capture_count}, "
-                f"captured_depth_mean={captured_depth_mean:.0f}mm, read_depth_mean={read_depth_mean:.0f}mm"
-            )
-
-        # Warn if there's a large discrepancy (suggests buffer corruption)
-        if abs(read_depth_mean - captured_depth_mean) > 50:
-            logger.warning(
-                f"{self} DEPTH MISMATCH! read #{self._read_count}: "
-                f"captured={captured_depth_mean:.0f}mm vs read={read_depth_mean:.0f}mm "
-                f"(diff={abs(read_depth_mean - captured_depth_mean):.0f}mm)"
-            )
 
         return color_frame, depth_frame
 

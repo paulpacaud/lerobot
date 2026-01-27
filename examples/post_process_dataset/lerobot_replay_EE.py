@@ -19,18 +19,19 @@ Replay a PointAct-format LeRobot dataset on a real robot.
 
 This script supports two replay modes:
 - "ee": Replay EE trajectory using inverse kinematics (converts EE pose to joint positions)
-- "joint": Replay recorded joint positions directly (no IK)
+- "joint": Replay original joint commands directly from action.joints (no IK)
 
-The PointAct dataset actions have format: [x, y, z, axis_angle1, axis_angle2, axis_angle3, gripper_openness]
-The joint_state has format: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
+The PointAct dataset has:
+- action: [x, y, z, axis_angle1, axis_angle2, axis_angle3, gripper_openness] (EE commands)
+- action.joints: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper] (original joint commands)
 
 Usage:
 ```bash
 # Replay using EE cartesian trajectory with IK
-python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/hang_mug_test_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=ee
+python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=ee
 
-# Replay using recorded joint positions directly
-python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/hang_mug_test_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=joint
+# Replay using original joint commands directly
+python examples/post_process_dataset/lerobot_replay_EE.py --dataset_dir=/home/prl-tiago/lerobot_datasets/put_cube_in_spot_pointact --episode_index=0 --robot_port=/dev/ttyACM0 --replay_target=joint
 ```
 """
 
@@ -68,7 +69,7 @@ class Args(Tap):
     # Robot configuration
     robot_port: str = "/dev/ttyACM0"  # USB port for the robot
     robot_id: str = "follower_arm"  # Robot identifier
-    use_degrees: bool = True  # Use degrees for motor control
+    use_degrees: bool = False  # Use degrees for motor control (default matches SO100FollowerConfig)
 
     # Kinematics
     urdf_path: str = DEFAULT_URDF_PATH  # Path to the robot URDF file
@@ -85,7 +86,6 @@ class Args(Tap):
     # Safety
     initial_move_duration: float = 3.0  # Duration (seconds) to move to first position
     initial_move_steps: int = 50  # Number of interpolation steps for initial move
-    confirm_start: bool = True  # Ask for confirmation before starting replay
 
 
 def load_dataset_info(dataset_path: Path) -> dict:
@@ -216,9 +216,9 @@ def main():
     if args.replay_target == "ee":
         actions = episode_data["action"].tolist()
         actions = [np.array(a, dtype=np.float32) for a in actions]
-    else:  # joint mode
-        joint_states = episode_data["observation.states.joint_state"].tolist()
-        joint_states = [np.array(js, dtype=np.float32) for js in joint_states]
+    else:  # joint mode - use original joint commands (action.joints), not observed states
+        joint_actions = episode_data["action.joints"].tolist()
+        joint_actions = [np.array(ja, dtype=np.float32) for ja in joint_actions]
 
     # Initialize robot
     logging.info(f"Connecting to robot on port: {args.robot_port}")
@@ -290,16 +290,10 @@ def main():
             first_joint_action = ee_to_joints_processor((first_ee_action, robot_obs))
             first_target_joints = np.array([first_joint_action[f"{m}.pos"] for m in motor_names])
         else:  # joint mode
-            first_target_joints = joint_states[start_frame]
-            logging.info(f"First target joints (from dataset): {first_target_joints}")
+            first_target_joints = joint_actions[start_frame]
+            logging.info(f"First target joints (from action.joints): {first_target_joints}")
 
         logging.info(f"First target joints: {first_target_joints}")
-
-        if args.confirm_start:
-            confirm = input("\nMove to start position and begin replay? (y/n): ").strip().lower()
-            if confirm != "y":
-                logging.info("Replay cancelled.")
-                return
 
         # Move to first position with interpolation
         logging.info(f"Moving to start position over {args.initial_move_duration}s...")
@@ -329,8 +323,8 @@ def main():
                 robot_obs = robot.get_observation()
                 joint_action = ee_to_joints_processor((ee_action, robot_obs))
             else:  # joint mode
-                # Use recorded joint positions directly
-                joint_action = joint_array_to_joint_action(joint_states[frame_idx], motor_names)
+                # Use original joint commands directly
+                joint_action = joint_array_to_joint_action(joint_actions[frame_idx], motor_names)
 
             # Send action to robot
             robot.send_action(joint_action)

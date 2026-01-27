@@ -83,7 +83,7 @@ class Args(Tap):
     image_size: int = 256  # Target image size (square)
 
     # Idle frame trimming
-    trim_idle_frames: bool = True  # Enable trimming of idle frames at episode start/end
+    no_trim_idle_frames: bool = False  # Disable trimming of idle frames at episode start/end
     trim_threshold_factor: float = 0.1  # Threshold = median(deltas) * this factor
 
     # Data keys (input)
@@ -99,6 +99,7 @@ class Args(Tap):
     output_ee_state_key: str = "observation.states.ee_state"
     output_joint_state_key: str = "observation.states.joint_state"
     output_gripper_state_key: str = "observation.states.gripper_state"
+    output_joint_action_key: str = "action.joints"  # Original joint commands for replay
 
 
 DEFAULT_CHUNK_SIZE = 1000
@@ -413,6 +414,7 @@ def convert_to_pointact_format(
     output_ee_state_key: str = "observation.states.ee_state",
     output_joint_state_key: str = "observation.states.joint_state",
     output_gripper_state_key: str = "observation.states.gripper_state",
+    output_joint_action_key: str = "action.joints",
 ) -> None:
     """
     Convert a LeRobot dataset to PointAct format.
@@ -536,6 +538,7 @@ def convert_to_pointact_format(
         new_actions = []
         ee_states = []
         joint_states = []
+        joint_actions = []  # Original joint commands for replay
         gripper_states = []
 
         for _, row in ep_df.iterrows():
@@ -550,6 +553,7 @@ def convert_to_pointact_format(
             new_actions.append(action_ee)
             ee_states.append(ee_pose)
             joint_states.append(state_joints.astype(np.float32))
+            joint_actions.append(action_joints.astype(np.float32))  # Save original joint commands
             gripper_states.append(np.array([state_joints[5]], dtype=np.float32))
 
         # Update episode dataframe with FK results
@@ -557,6 +561,7 @@ def convert_to_pointact_format(
         ep_df[action_key] = new_actions
         ep_df[output_ee_state_key] = ee_states
         ep_df[output_joint_state_key] = joint_states
+        ep_df[output_joint_action_key] = joint_actions  # Original joint commands for replay
         ep_df[output_gripper_state_key] = gripper_states
         episode_data[episode_idx] = ep_df
 
@@ -751,6 +756,13 @@ def convert_to_pointact_format(
         "names": {"motors": ["gripper_openness"]},
     }
 
+    # Add original joint action for replay
+    info["features"][output_joint_action_key] = {
+        "dtype": "float32",
+        "shape": [len(all_joint_names)],
+        "names": {"motors": all_joint_names},
+    }
+
     # Update image feature
     if rgb_key in info["features"]:
         info["features"].pop(rgb_key)
@@ -789,6 +801,7 @@ def convert_to_pointact_format(
     logging.info(f"  {action_key}: shape [7], {state_names}")
     logging.info(f"  {output_ee_state_key}: shape [6], {ee_names}")
     logging.info(f"  {output_joint_state_key}: shape [6], {joint_names + ['gripper']}")
+    logging.info(f"  {output_joint_action_key}: shape [6], {joint_names + ['gripper']} (original joint commands)")
     logging.info(f"  {output_gripper_state_key}: shape [1], ['gripper_openness']")
     logging.info(f"  {output_image_key}: shape [{image_size}, {image_size}, 3]")
     logging.info(f"  {output_point_cloud_key}: point cloud data")
@@ -804,7 +817,7 @@ if __name__ == "__main__":
         target_frame=args.target_frame,
         joint_names=args.joint_names,
         image_size=args.image_size,
-        trim_idle_frames=args.trim_idle_frames,
+        trim_idle_frames=not args.no_trim_idle_frames,
         trim_threshold_factor=args.trim_threshold_factor,
         state_key=args.state_key,
         action_key=args.action_key,
@@ -816,4 +829,5 @@ if __name__ == "__main__":
         output_ee_state_key=args.output_ee_state_key,
         output_joint_state_key=args.output_joint_state_key,
         output_gripper_state_key=args.output_gripper_state_key,
+        output_joint_action_key=args.output_joint_action_key,
     )
