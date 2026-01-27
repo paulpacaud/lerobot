@@ -550,6 +550,7 @@ def convert_to_pointact_format(
             state_joints = np.array(row[state_key], dtype=np.float32)
             action_joints = np.array(row[action_key], dtype=np.float32)
 
+            # Compute EE poses
             ee_pose, state_ee = joints_to_ee(state_joints, kinematics, Rotation, translation_offset)
             _, action_ee = joints_to_ee(action_joints, kinematics, Rotation, translation_offset)
 
@@ -684,9 +685,11 @@ def convert_to_pointact_format(
     # Resize and trim videos
     logging.info("Resizing and trimming videos...")
     if videos_dir.exists():
+        # Find all video files for the RGB key
         for chunk_dir in sorted(videos_dir.glob("chunk-*")):
             rgb_video_dir = chunk_dir / rgb_key
             if rgb_video_dir.exists():
+                # Rename to new key
                 new_video_dir = chunk_dir / output_image_key
                 for video_file in sorted(rgb_video_dir.glob("*.mp4")):
                     # Parse episode index from video filename
