@@ -853,6 +853,14 @@ def convert_to_pointact_format(
         # Apply trim - select only the frames to keep
         trimmed_df = ep_df.iloc[frames_to_keep].copy()
 
+        # Drop depth column if present (we removed the video files, now remove from parquet)
+        if depth_key in trimmed_df.columns:
+            trimmed_df = trimmed_df.drop(columns=[depth_key])
+
+        # Drop original RGB key if present (renamed to output_image_key, stored as video)
+        if rgb_key in trimmed_df.columns:
+            trimmed_df = trimmed_df.drop(columns=[rgb_key])
+
         # Update frame_index to be 0-indexed from new start
         trimmed_df["frame_index"] = range(len(trimmed_df))
 
