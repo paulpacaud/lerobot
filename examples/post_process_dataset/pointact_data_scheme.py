@@ -5,13 +5,6 @@ POINTACT_FEATURES = {
         "shape": (256, 256, 3),
         "names": ["height", "width", "rgb"],
     },
-    # Depth image
-    "observation.images.front_depth": {
-        "dtype": "image",
-        "shape": (480, 640, 1),
-        "names": ["height", "width", "channels"],
-        "is_depth_map": True,
-    },
     # Point cloud
     "observation.points.frontview": {
         "dtype": "point_cloud",

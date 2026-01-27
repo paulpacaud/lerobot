@@ -22,7 +22,7 @@
 | `visualize_ee_trajectory_with_transform.py` | Visualize EE trajectory on point cloud with adjustable translation offset |
 | `convert_to_pointact_format.py` | Converts dataset to PointAct format with EE+joint states, resized images, and renamed keys |
 | `visualize_pointact_dataset.py` | Visualize PointAct dataset with EE trajectory and point cloud |
-| `constants/` | Camera calibration files (intrinsics.npz, extrinsics.npz), URDF files, and workspace definition |
+| `constants/` | Camera calibration files (intrinsics.npz, extrinsics.npz), URDF files, workspace definition, and robot frame position (ROBOT_FRAME) |
 | `reference_only/` | Reference implementations (depth projection, point cloud processing) |
 
 ## Commands
@@ -138,8 +138,10 @@ python examples/post_process_dataset/visualize_ee_trajectory_with_transform.py \
 
 ### 10. Convert to PointAct format
 ```bash
-python examples/post_process_dataset/convert_to_pointact_format.py --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 --output_dir=$HOME/lerobot_datasets/hang_mug_test_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf --tx=-0.2755 --ty=-0.0599 --tz=0.0257
+python -m examples.post_process_dataset.convert_to_pointact_format --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 --output_dir=$HOME/lerobot_datasets/hang_mug_test_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
 ```
+
+Note: The robot-to-world translation offset is defined in `constants/constants.py` as `ROBOT_FRAME`.
 
 This converts the dataset to PointAct format with:
 - `observation.state`: (7,) [x, y, z, axis_angle1-3, gripper]
@@ -156,7 +158,7 @@ python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir
 ```
 
 ### 12. Push to Hub
-huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact $HOME/lerobot_datasets/put_cube_in_spot_pointact --repo-type dataset
+huggingface-cli upload ${HF_USER}/hang_mug_test_pointact $HOME/lerobot_datasets/hang_mug_test_pointact --repo-type dataset
 
 huggingface-cli download paulpacaud/put_cube_in_spot_pointact \
   --repo-type dataset \

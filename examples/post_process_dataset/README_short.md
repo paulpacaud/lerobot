@@ -83,7 +83,7 @@ python -m examples.post_process_dataset.add_point_cloud_to_dataset \
 
 ### 10. Convert to PointAct format
 ```bash
-python examples/post_process_dataset/convert_to_pointact_format.py --dataset_dir=$HOME/lerobot_datasets/hang_mug_v2 --output_dir=$HOME/lerobot_datasets/hang_mug_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf --tx=-0.28 --ty=0.03 --tz=0.05
+python -m examples.post_process_dataset.convert_to_pointact_format --dataset_dir=$HOME/lerobot_datasets/hang_mug_test_v2 --output_dir=$HOME/lerobot_datasets/hang_mug_test_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
 ```
 
 

@@ -30,7 +30,7 @@ Output format (PointAct):
 
 Usage:
 ```bash
-python examples/post_process_dataset/convert_to_pointact_format.py --dataset_dir=$HOME/lerobot_datasets/depth_test_v2 --output_dir=$HOME/lerobot_datasets/depth_test_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf --tx=-0.28 --ty=0.03 --tz=0.05
+python examples/post_process_dataset/convert_to_pointact_format.py --dataset_dir=$HOME/lerobot_datasets/depth_test_v2 --output_dir=$HOME/lerobot_datasets/depth_test_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
 ```
 """
 
@@ -52,6 +52,8 @@ from PIL import Image
 from tap import Tap
 from tqdm import tqdm
 
+from examples.post_process_dataset.constants.constants import ROBOT_FRAME
+
 msgpack_numpy.patch()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -67,11 +69,6 @@ class Args(Tap):
     # Optional arguments
     output_dir: str | None = None  # Output directory (if None, modifies dataset in place)
     target_frame: str = "gripper_frame_link"  # Name of the EE frame in URDF
-
-    # Robot-to-world translation offset
-    tx: float = 0.0  # X translation offset (meters)
-    ty: float = 0.0  # Y translation offset (meters)
-    tz: float = 0.0  # Z translation offset (meters)
 
     # Joint configuration
     joint_names: list[str] = [
@@ -403,9 +400,6 @@ def convert_to_pointact_format(
     output_dir: str | None = None,
     target_frame: str = "gripper_frame_link",
     joint_names: list[str] | None = None,
-    tx: float = 0.0,
-    ty: float = 0.0,
-    tz: float = 0.0,
     image_size: int = 256,
     trim_idle_frames: bool = True,
     trim_threshold_factor: float = 0.1,
@@ -429,7 +423,6 @@ def convert_to_pointact_format(
         output_dir: Path for output dataset
         target_frame: Name of the EE frame in URDF
         joint_names: List of joint names for FK
-        tx, ty, tz: Translation offset (robot to world frame)
         image_size: Target image size (square)
         trim_idle_frames: Enable trimming of idle frames at episode start/end
         trim_threshold_factor: Threshold = median(deltas) * this factor
@@ -460,15 +453,14 @@ def convert_to_pointact_format(
     logging.info(f"Loading URDF from: {urdf_path}")
     logging.info(f"Target frame: {target_frame}")
     logging.info(f"Joint names: {joint_names}")
-    logging.info(f"Translation offset: [{tx}, {ty}, {tz}]")
+    logging.info(f"Translation offset: [{ROBOT_FRAME['tx']}, {ROBOT_FRAME['ty']}, {ROBOT_FRAME['tz']}]")
     logging.info(f"Target image size: {image_size}x{image_size}")
     logging.info(f"Trim idle frames: {trim_idle_frames}")
     if trim_idle_frames:
         logging.info(f"Trim threshold factor: {trim_threshold_factor}")
 
-    translation_offset = None
-    if not (tx == 0.0 and ty == 0.0 and tz == 0.0):
-        translation_offset = np.array([tx, ty, tz], dtype=np.float64)
+    tx, ty, tz = ROBOT_FRAME['tx'], ROBOT_FRAME['ty'], ROBOT_FRAME['tz']
+    translation_offset = np.array([tx, ty, tz], dtype=np.float64)
 
     kinematics = RobotKinematics(
         urdf_path=str(urdf_path),
@@ -811,9 +803,6 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         target_frame=args.target_frame,
         joint_names=args.joint_names,
-        tx=args.tx,
-        ty=args.ty,
-        tz=args.tz,
         image_size=args.image_size,
         trim_idle_frames=args.trim_idle_frames,
         trim_threshold_factor=args.trim_threshold_factor,

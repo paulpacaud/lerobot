@@ -13,3 +13,11 @@ WORKSPACE = {
     'Y_BBOX': [-0.35, 0.3],   # Left-right
     'Z_BBOX': [0.0, 0.4],    # Up-down (height from table)
 }
+
+# Robot frame position in world coordinates (meters)
+# Translation offset from robot base to world frame origin
+ROBOT_FRAME = {
+    'tx': -0.2755,
+    'ty': -0.0599,
+    'tz': 0.0257,
+}
