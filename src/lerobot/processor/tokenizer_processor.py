@@ -120,7 +120,7 @@ class TokenizerProcessorStep(ObservationProcessorStep):
                             snapshot_hash = refs_main.read_text().strip()
                             snapshot_path = cache_path / "snapshots" / snapshot_hash
                             if snapshot_path.exists():
-                                logging.info(f"Loading tokenizer from local cache: {snapshot_path}")
+                                print(f"Loading tokenizer from local cache: {snapshot_path}")
                                 self.input_tokenizer = AutoTokenizer.from_pretrained(str(snapshot_path), local_files_only=True)
                                 return
 

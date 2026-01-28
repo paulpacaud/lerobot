@@ -48,7 +48,7 @@ class Args(Tap):
     # Point cloud processing
     voxel_size: float = 0.01  # Voxel size for downsampling (meters)
     depth_scale: float = 1000.0  # Scale factor for depth values (1000 for mm->m)
-    num_workers: int = 8  # Number of parallel workers for point cloud processing
+    num_workers: int = 8  # Number of parallel workers for pcd processing
 
     # Workspace bounds (meters)
     workspace_x_min: float = WORKSPACE["X_BBOX"][0]

@@ -268,11 +268,25 @@ class GrootPackInputsStep(ProcessorStep):
             return torch.where(mask, mapped, torch.zeros_like(mapped))
 
         # 1) Video (B, T=1, V, H, W, C) uint8
-        img_keys = sorted([k for k in obs if k.startswith("observation.images.")])
+        # Filter out depth images - GR00T expects RGB frames only
+        img_keys = sorted([
+            k for k in obs
+            if k.startswith("observation.images.") and "depth" not in k.lower()
+        ])
         if not img_keys and "observation.image" in obs:
             img_keys = ["observation.image"]
         if img_keys:
-            cams = [_to_uint8_np_bhwc(obs[k]) for k in img_keys]
+            # Only use RGB images (3 channels), skip single-channel images
+            cams = []
+            for k in img_keys:
+                img = obs[k]
+                if isinstance(img, torch.Tensor) and img.shape[-3] == 3:  # (B, C, H, W) format
+                    cams.append(_to_uint8_np_bhwc(img))
+            if not cams:
+                raise ValueError(
+                    f"No valid RGB images found. Available keys: {list(obs.keys())}. "
+                    "GR00T requires RGB images with 3 channels."
+                )
             video = np.stack(cams, axis=1)  # (B, V, H, W, C)
             video = np.expand_dims(video, axis=1)  # (B, 1, V, H, W, C)
             # GR00T validates that video.shape[3] == 3 (channels), so reorder to (B, T, V, C, H, W)

@@ -142,6 +142,20 @@ class RobotClientConfig:
         default=False, metadata={"help": "Visualize the action queue size"}
     )
 
+    # EE action space configuration (for policies trained on EE poses)
+    action_space: str = field(
+        default="joint",
+        metadata={"help": "Action space: 'joint' (default) or 'ee' (requires IK conversion)"},
+    )
+    urdf_path: str | None = field(
+        default=None,
+        metadata={"help": "Path to URDF file (required if action_space='ee')"},
+    )
+    target_frame: str = field(
+        default="gripper_frame_link",
+        metadata={"help": "End-effector frame name in URDF (used if action_space='ee')"},
+    )
+
     @property
     def environment_dt(self) -> float:
         """Environment time step, in seconds"""
@@ -171,6 +185,12 @@ class RobotClientConfig:
             raise ValueError(f"actions_per_chunk must be positive, got {self.actions_per_chunk}")
 
         self.aggregate_fn = get_aggregate_function(self.aggregate_fn_name)
+
+        if self.action_space not in ("joint", "ee"):
+            raise ValueError(f"action_space must be 'joint' or 'ee', got {self.action_space}")
+
+        if self.action_space == "ee" and not self.urdf_path:
+            raise ValueError("urdf_path is required when action_space='ee'")
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "RobotClientConfig":

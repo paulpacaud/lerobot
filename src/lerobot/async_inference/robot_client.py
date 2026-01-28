@@ -48,6 +48,10 @@ import torch
 
 from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig  # noqa: F401
 from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraConfig  # noqa: F401
+from lerobot.model.kinematics import RobotKinematics
+from lerobot.processor import RobotProcessorPipeline
+from lerobot.processor.converters import robot_action_observation_to_transition, transition_to_robot_action
+from lerobot.robots.so100_follower.robot_kinematic_processor import InverseKinematicsEEToJoints
 from lerobot.robots import (  # noqa: F401
     Robot,
     RobotConfig,
@@ -131,6 +135,28 @@ class RobotClient:
         self.fps_tracker = FPSTracker(target_fps=self.config.fps)
 
         self.logger.info("Robot connected and ready")
+
+        # Initialize EE→Joint IK processor if action_space is "ee"
+        self.ik_processor = None
+        if config.action_space == "ee":
+            motor_names = list(self.robot.bus.motors.keys())
+            kinematics = RobotKinematics(
+                urdf_path=config.urdf_path,
+                target_frame_name=config.target_frame,
+                joint_names=[n for n in motor_names if "gripper" not in n.lower()],
+            )
+            self.ik_processor = RobotProcessorPipeline(
+                steps=[
+                    InverseKinematicsEEToJoints(
+                        kinematics=kinematics,
+                        motor_names=motor_names,
+                        initial_guess_current_joints=True,
+                    ),
+                ],
+                to_transition=robot_action_observation_to_transition,
+                to_output=transition_to_robot_action,
+            )
+            self.logger.info(f"EE mode enabled with IK using URDF: {config.urdf_path}")
 
         # Use an event for thread-safe coordination
         self.must_go = threading.Event()
@@ -349,7 +375,13 @@ class RobotClient:
             return not self.action_queue.empty()
 
     def _action_tensor_to_action_dict(self, action_tensor: torch.Tensor) -> dict[str, float]:
-        action = {key: action_tensor[i].item() for i, key in enumerate(self.robot.action_features)}
+        if self.ik_processor is not None:
+            # EE mode: tensor is [x, y, z, wx, wy, wz, gripper]
+            ee_names = ["ee.x", "ee.y", "ee.z", "ee.wx", "ee.wy", "ee.wz", "ee.gripper_pos"]
+            action = {key: action_tensor[i].item() for i, key in enumerate(ee_names)}
+        else:
+            # Joint mode: tensor matches robot.action_features
+            action = {key: action_tensor[i].item() for i, key in enumerate(self.robot.action_features)}
         return action
 
     def control_loop_action(self, verbose: bool = False) -> dict[str, Any]:
@@ -363,9 +395,14 @@ class RobotClient:
             timed_action = self.action_queue.get_nowait()
         get_end = time.perf_counter() - get_start
 
-        _performed_action = self.robot.send_action(
-            self._action_tensor_to_action_dict(timed_action.get_action())
-        )
+        action_dict = self._action_tensor_to_action_dict(timed_action.get_action())
+
+        # If in EE mode, apply IK to convert EE poses to joint commands
+        if self.ik_processor is not None:
+            robot_obs = self.robot.get_observation()
+            action_dict = self.ik_processor((action_dict, robot_obs))
+
+        _performed_action = self.robot.send_action(action_dict)
         with self.latest_action_lock:
             self.latest_action = timed_action.get_timestep()
 
