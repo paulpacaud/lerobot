@@ -87,7 +87,10 @@ python src/lerobot/scripts/lerobot_train.py \
 ```
 
 ### Step 3: Run Inference
+#### Policy server:
+`TORCH_COMPILE_DISABLE=1 python -m lerobot.async_inference.policy_server --host=127.0.0.1 --port=8080`
 
+#### Robot client:
 `ssh -N -L 8080:127.0.0.1:8080 ppacaud@dgx-station.paris.inria.fr`
 
 **For joint-space policy** (standard):

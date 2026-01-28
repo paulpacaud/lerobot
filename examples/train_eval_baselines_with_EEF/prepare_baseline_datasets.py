@@ -145,6 +145,59 @@ def save_episodes_stats_v21(root: Path, stats: list[dict]) -> None:
             writer.write(s)
 
 
+def cleanup_removed_features_from_metadata(dataset_path: Path, features_to_remove: list[str]) -> None:
+    """
+    Remove stale feature entries from v3.0 metadata files.
+
+    After v2.1 → v3.0 conversion, the converter may re-introduce entries for
+    features that were removed during processing. This function cleans them up.
+
+    Args:
+        dataset_path: Path to the v3.0 dataset
+        features_to_remove: List of feature names to remove from metadata
+    """
+    removed_from_stats = []
+    removed_from_episodes_stats = []
+
+    # Clean meta/stats.json
+    stats_file = dataset_path / "meta" / "stats.json"
+    if stats_file.exists():
+        with open(stats_file) as f:
+            stats = json.load(f)
+
+        for feature in features_to_remove:
+            if feature in stats:
+                del stats[feature]
+                removed_from_stats.append(feature)
+
+        with open(stats_file, "w") as f:
+            json.dump(stats, f, indent=2)
+
+    # Clean meta/episodes_stats.jsonl
+    episodes_stats_file = dataset_path / "meta" / "episodes_stats.jsonl"
+    if episodes_stats_file.exists():
+        modified_entries = []
+        with jsonlines.open(episodes_stats_file) as reader:
+            for entry in reader:
+                if "stats" in entry:
+                    for feature in features_to_remove:
+                        if feature in entry["stats"]:
+                            del entry["stats"][feature]
+                            if feature not in removed_from_episodes_stats:
+                                removed_from_episodes_stats.append(feature)
+                modified_entries.append(entry)
+
+        with jsonlines.open(episodes_stats_file, mode="w") as writer:
+            for entry in modified_entries:
+                writer.write(entry)
+
+    # Log what was removed
+    if removed_from_stats:
+        logging.info(f"Removed from stats.json: {removed_from_stats}")
+    if removed_from_episodes_stats:
+        logging.info(f"Removed from episodes_stats.jsonl: {removed_from_episodes_stats}")
+
+
 # =============================================================================
 # Conversion wrappers
 # =============================================================================
@@ -899,7 +952,10 @@ def main():
             # Step 3: v2.1 → v3.0
             logging.info("Step 3: Converting v2.1 → v3.0...")
             convert_v21_to_v30_local(v21_ee_path, output_ee_path)
+            cleanup_removed_features_from_metadata(output_ee_path, FEATURES_TO_REMOVE)
+
             convert_v21_to_v30_local(v21_joints_path, output_joints_path)
+            cleanup_removed_features_from_metadata(output_joints_path, FEATURES_TO_REMOVE)
 
     else:
         # v2.1 dataset - process directly and leave as v2.1
@@ -912,6 +968,8 @@ def main():
             args,
             num_workers=args.num_workers,
         )
+        cleanup_removed_features_from_metadata(output_ee_path, FEATURES_TO_REMOVE)
+        cleanup_removed_features_from_metadata(output_joints_path, FEATURES_TO_REMOVE)
 
     logging.info("")
     logging.info("=" * 60)

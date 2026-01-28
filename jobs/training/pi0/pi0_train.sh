@@ -47,7 +47,6 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUTPUT_DIR="$SCRATCH/data/lerobot/outputs/train/pi0_${TRAIN_DATASET}_${TIMESTAMP}"
 echo "Output directory: $OUTPUT_DIR"
 
-
 python src/lerobot/scripts/lerobot_train.py \
     --dataset.repo_id=local \
     --dataset.root="$SCRATCH/data/lerobot/$TRAIN_DATASET" \
