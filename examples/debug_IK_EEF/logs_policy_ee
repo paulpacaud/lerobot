@@ -1,0 +1,95 @@
+(lerobot) prl-tiago@prl-tiago:~/lerobot$ python -m lerobot.async_inference.robot_client   --server_address=127.0.0.1:8080   --robot.type=so100_follower   --robot.port=/dev/ttyACM0   --robot.id=follower_arm   --robot.cameras="{ front: {type: intelrealsense, serial_number_or_name: 147122078460, width: 640, height: 480, fps: 30, use_depth: false}}"   --task="put the banana in the blue plate, then put the green toy in the pink plate"   --policy_type=pi0 --pretrained_name_or_path=/home/ppacaud/data/lerobot/models/pi0_multitasks_3tasks_ee_20260128_033350-ckpt10k   --policy_device=cuda   --actions_per_chunk=50   --chunk_size_threshold=0   --aggregate_fn_name=weighted_average   --debug_visualize_queue_size=True   --action_space=ee   --urdf_path=./URDF/SO101/so101_new_calib.urdf
+INFO 2026-01-28 11:25:37 t_client.py:522 {'action_space': 'ee',
+ 'actions_per_chunk': 50,
+ 'aggregate_fn_name': 'weighted_average',
+ 'chunk_size_threshold': 0.0,
+ 'debug_visualize_queue_size': True,
+ 'fps': 30,
+ 'policy_device': 'cuda',
+ 'policy_type': 'pi0',
+ 'pretrained_name_or_path': '/home/ppacaud/data/lerobot/models/pi0_multitasks_3tasks_ee_20260128_033350-ckpt10k',
+ 'robot': {'calibration_dir': None,
+           'cameras': {'front': {'color_mode': <ColorMode.RGB: 'rgb'>,
+                                 'fps': 30,
+                                 'height': 480,
+                                 'rotation': <Cv2Rotation.NO_ROTATION: 0>,
+                                 'serial_number_or_name': '147122078460',
+                                 'use_depth': False,
+                                 'warmup_s': 1,
+                                 'width': 640}},
+           'disable_torque_on_disconnect': True,
+           'id': 'follower_arm',
+           'max_relative_target': None,
+           'port': '/dev/ttyACM0',
+           'use_degrees': False},
+ 'server_address': '127.0.0.1:8080',
+ 'target_frame': 'gripper_frame_link',
+ 'task': 'put the banana in the blue plate, then put the green toy in the pink '
+         'plate',
+ 'urdf_path': './URDF/SO101/so101_new_calib.urdf'}
+INFO 2026-01-28 11:25:39 ealsense.py:209 RealSenseCamera(147122078460) connected.
+INFO 2026-01-28 11:25:39 follower.py:112 follower_arm SO100Follower connected.
+INFO 2026-01-28 11:25:39 t_client.py:118 Initializing client to connect to server at 127.0.0.1:8080
+INFO 2026-01-28 11:25:39 t_client.py:137 Robot connected and ready
+WARNING: Robot has the following self collisions in neutral position:
+  -base_link_2 collides with shoulder_link_2
+  -shoulder_link_0 collides with upper_arm_link_1
+  -upper_arm_link_0 collides with lower_arm_link_0
+  -lower_arm_link_2 collides with wrist_link_1
+  -wrist_link_0 collides with gripper_link_1
+  -gripper_link_0 collides with moving_jaw_so101_v1_link_0
+INFO 2026-01-28 11:25:42 t_client.py:159 EE mode enabled with IK using URDF: ./URDF/SO101/so101_new_calib.urdf
+INFO 2026-01-28 11:25:42 t_client.py:182 Sending policy instructions to policy server
+INFO 2026-01-28 11:27:00 t_client.py:530 Starting action receiver thread...
+INFO 2026-01-28 11:27:00 t_client.py:498 Control loop thread starting
+INFO 2026-01-28 11:27:00 t_client.py:299 Action receiving thread starting
+INFO 2026-01-28 11:27:01 t_client.py:379 [DEBUG] Action tensor shape: torch.Size([7])
+INFO 2026-01-28 11:27:01 t_client.py:380 [DEBUG] Action tensor values: tensor([ 1.3190e-01,  6.3425e-04, -7.2329e-03,  1.0177e-01, -2.8855e+00,
+         1.6221e-03,  7.8611e-01], device='cuda:0')
+INFO 2026-01-28 11:27:01 t_client.py:405 [DEBUG] Pre-IK action_dict keys: dict_keys(['ee.x', 'ee.y', 'ee.z', 'ee.wx', 'ee.wy', 'ee.wz', 'ee.gripper_pos'])
+INFO 2026-01-28 11:27:01 t_client.py:406 [DEBUG] Pre-IK action_dict values: {'ee.x': 0.1318962126970291, 'ee.y': 0.0006342455744743347, 'ee.z': -0.00723285973072052, 'ee.wx': 0.10177017748355865, 'ee.wy': -2.8855409622192383, 'ee.wz': 0.0016221124678850174, 'ee.gripper_pos': 0.7861061096191406}
+INFO 2026-01-28 11:27:01 t_client.py:414 [DEBUG] Post-IK action_dict: {'shoulder_pan.pos': -3.2096360246699915, 'shoulder_lift.pos': -38.7109524134353, 'elbow_flex.pos': 96.82986737710908, 'wrist_flex.pos': 94.99984017946127, 'wrist_roll.pos': 9.918457388966644, 'gripper.pos': 0.7861061096191406}
+INFO 2026-01-28 11:27:01 t_client.py:419 [DEBUG] Would send action (robot execution disabled): {'shoulder_pan.pos': -3.2096360246699915, 'shoulder_lift.pos': -38.7109524134353, 'elbow_flex.pos': 96.82986737710908, 'wrist_flex.pos': 94.99984017946127, 'wrist_roll.pos': 9.918457388966644, 'gripper.pos': 0.7861061096191406}
+INFO 2026-01-28 11:27:01 t_client.py:379 [DEBUG] Action tensor shape: torch.Size([7])
+INFO 2026-01-28 11:27:01 t_client.py:380 [DEBUG] Action tensor values: tensor([ 1.3454e-01,  5.6164e-04, -3.5994e-03,  9.4138e-02, -2.8532e+00,
+         1.2094e-03,  6.7100e-01], device='cuda:0')
+INFO 2026-01-28 11:27:01 t_client.py:405 [DEBUG] Pre-IK action_dict keys: dict_keys(['ee.x', 'ee.y', 'ee.z', 'ee.wx', 'ee.wy', 'ee.wz', 'ee.gripper_pos'])
+INFO 2026-01-28 11:27:01 t_client.py:406 [DEBUG] Pre-IK action_dict values: {'ee.x': 0.13453605771064758, 'ee.y': 0.0005616415292024612, 'ee.z': -0.0035993829369544983, 'ee.wx': 0.09413814544677734, 'ee.wy': -2.8531570434570312, 'ee.wz': 0.001209421083331108, 'ee.gripper_pos': 0.6709985733032227}
+INFO 2026-01-28 11:27:01 t_client.py:414 [DEBUG] Post-IK action_dict: {'shoulder_pan.pos': -2.17450906993429, 'shoulder_lift.pos': 26.13828089946332, 'elbow_flex.pos': -4.464807363600428, 'wrist_flex.pos': 27.535491918726223, 'wrist_roll.pos': -1.1523011665617917, 'gripper.pos': 0.6709985733032227}
+INFO 2026-01-28 11:27:01 t_client.py:419 [DEBUG] Would send action (robot execution disabled): {'shoulder_pan.pos': -2.17450906993429, 'shoulder_lift.pos': 26.13828089946332, 'elbow_flex.pos': -4.464807363600428, 'wrist_flex.pos': 27.535491918726223, 'wrist_roll.pos': -1.1523011665617917, 'gripper.pos': 0.6709985733032227}
+INFO 2026-01-28 11:27:01 t_client.py:379 [DEBUG] Action tensor shape: torch.Size([7])
+INFO 2026-01-28 11:27:01 t_client.py:380 [DEBUG] Action tensor values: tensor([ 1.3470e-01,  7.8133e-04, -2.2450e-03,  9.1518e-02, -2.8571e+00,
+         3.8411e-04,  6.3668e-01], device='cuda:0')
+INFO 2026-01-28 11:27:01 t_client.py:405 [DEBUG] Pre-IK action_dict keys: dict_keys(['ee.x', 'ee.y', 'ee.z', 'ee.wx', 'ee.wy', 'ee.wz', 'ee.gripper_pos'])
+INFO 2026-01-28 11:27:01 t_client.py:406 [DEBUG] Pre-IK action_dict values: {'ee.x': 0.13470126688480377, 'ee.y': 0.0007813330739736557, 'ee.z': -0.0022450461983680725, 'ee.wx': 0.0915183424949646, 'ee.wy': -2.857110023498535, 'ee.wz': 0.00038411468267440796, 'ee.gripper_pos': 0.636683464050293}
+INFO 2026-01-28 11:27:01 t_client.py:414 [DEBUG] Post-IK action_dict: {'shoulder_pan.pos': -2.348656546608534, 'shoulder_lift.pos': -46.98036791602551, 'elbow_flex.pos': 96.82986737710912, 'wrist_flex.pos': 94.99984017946129, 'wrist_roll.pos': 9.717003054918719, 'gripper.pos': 0.636683464050293}
+INFO 2026-01-28 11:27:01 t_client.py:419 [DEBUG] Would send action (robot execution disabled): {'shoulder_pan.pos': -2.348656546608534, 'shoulder_lift.pos': -46.98036791602551, 'elbow_flex.pos': 96.82986737710912, 'wrist_flex.pos': 94.99984017946129, 'wrist_roll.pos': 9.717003054918719, 'gripper.pos': 0.636683464050293}
+INFO 2026-01-28 11:27:01 t_client.py:379 [DEBUG] Action tensor shape: torch.Size([7])
+INFO 2026-01-28 11:27:01 t_client.py:380 [DEBUG] Action tensor values: tensor([ 1.3690e-01,  1.5549e-03,  2.3280e-03,  9.1727e-02, -2.8507e+00,
+         1.1408e-03,  6.2668e-01], device='cuda:0')
+INFO 2026-01-28 11:27:01 t_client.py:405 [DEBUG] Pre-IK action_dict keys: dict_keys(['ee.x', 'ee.y', 'ee.z', 'ee.wx', 'ee.wy', 'ee.wz', 'ee.gripper_pos'])
+INFO 2026-01-28 11:27:01 t_client.py:406 [DEBUG] Pre-IK action_dict values: {'ee.x': 0.13689762353897095, 'ee.y': 0.0015548896044492722, 'ee.z': 0.0023279935121536255, 'ee.wx': 0.0917266309261322, 'ee.wy': -2.8507251739501953, 'ee.wz': 0.0011407546699047089, 'ee.gripper_pos': 0.6266765594482422}
+INFO 2026-01-28 11:27:01 t_client.py:414 [DEBUG] Post-IK action_dict: {'shoulder_pan.pos': -1.8596491059371199, 'shoulder_lift.pos': 77.5185787174377, 'elbow_flex.pos': -4.784240868644996, 'wrist_flex.pos': -15.144591060028667, 'wrist_roll.pos': -0.33365895663212897, 'gripper.pos': 0.6266765594482422}
+INFO 2026-01-28 11:27:01 t_client.py:419 [DEBUG] Would send action (robot execution disabled): {'shoulder_pan.pos': -1.8596491059371199, 'shoulder_lift.pos': 77.5185787174377, 'elbow_flex.pos': -4.784240868644996, 'wrist_flex.pos': -15.144591060028667, 'wrist_roll.pos': -0.33365895663212897, 'gripper.pos': 0.6266765594482422}
+INFO 2026-01-28 11:27:01 t_client.py:379 [DEBUG] Action tensor shape: torch.Size([7])
+INFO 2026-01-28 11:27:01 t_client.py:380 [DEBUG] Action tensor values: tensor([ 1.3894e-01,  2.0632e-03,  6.4746e-03,  8.7095e-02, -2.8365e+00,
+         3.1588e-03,  6.6248e-01], device='cuda:0')
+INFO 2026-01-28 11:27:01 t_client.py:405 [DEBUG] Pre-IK action_dict keys: dict_keys(['ee.x', 'ee.y', 'ee.z', 'ee.wx', 'ee.wy', 'ee.wz', 'ee.gripper_pos'])
+INFO 2026-01-28 11:27:01 t_client.py:406 [DEBUG] Pre-IK action_dict values: {'ee.x': 0.1389400064945221, 'ee.y': 0.0020631756633520126, 'ee.z': 0.006474636495113373, 'ee.wx': 0.08709478378295898, 'ee.wy': -2.836465835571289, 'ee.wz': 0.0031587500125169754, 'ee.gripper_pos': 0.6624841690063477}
+INFO 2026-01-28 11:27:01 t_client.py:414 [DEBUG] Post-IK action_dict: {'shoulder_pan.pos': -2.5869930652480817, 'shoulder_lift.pos': -60.22558420712794, 'elbow_flex.pos': 96.82986737710912, 'wrist_flex.pos': 94.99984017946129, 'wrist_roll.pos': 9.012133064532128, 'gripper.pos': 0.6624841690063477}
+INFO 2026-01-28 11:27:01 t_client.py:419 [DEBUG] Would send action (robot execution disabled): {'shoulder_pan.pos': -2.5869930652480817, 'shoulder_lift.pos': -60.22558420712794, 'elbow_flex.pos': 96.82986737710912, 'wrist_flex.pos': 94.99984017946129, 'wrist_roll.pos': 9.012133064532128, 'gripper.pos': 0.6624841690063477}
+INFO 2026-01-28 11:27:01 t_client.py:379 [DEBUG] Action tensor shape: torch.Size([7])
+INFO 2026-01-28 11:27:01 t_client.py:380 [DEBUG] Action tensor values: tensor([ 1.4183e-01,  2.2749e-03,  1.1676e-02,  8.4595e-02, -2.8640e+00,
+         3.5942e-03,  6.9163e-01], device='cuda:0')
+INFO 2026-01-28 11:27:01 t_client.py:405 [DEBUG] Pre-IK action_dict keys: dict_keys(['ee.x', 'ee.y', 'ee.z', 'ee.wx', 'ee.wy', 'ee.wz', 'ee.gripper_pos'])
+INFO 2026-01-28 11:27:01 t_client.py:406 [DEBUG] Pre-IK action_dict values: {'ee.x': 0.14183121919631958, 'ee.y': 0.002274896949529648, 'ee.z': 0.011675886809825897, 'ee.wx': 0.08459529280662537, 'ee.wy': -2.8640122413635254, 'ee.wz': 0.0035942327231168747, 'ee.gripper_pos': 0.6916313171386719}
+INFO 2026-01-28 11:27:01 t_client.py:414 [DEBUG] Post-IK action_dict: {'shoulder_pan.pos': -2.0214504133338576, 'shoulder_lift.pos': 100.00004285756799, 'elbow_flex.pos': 1.3849809682691367, 'wrist_flex.pos': -35.458549992007924, 'wrist_roll.pos': -0.28638165860935794, 'gripper.pos': 0.6916313171386719}
+INFO 2026-01-28 11:27:01 t_client.py:419 [DEBUG] Would send action (robot execution disabled): {'shoulder_pan.pos': -2.0214504133338576, 'shoulder_lift.pos': 100.00004285756799, 'elbow_flex.pos': 1.3849809682691367, 'wrist_flex.pos': -35.458549992007924, 'wrist_roll.pos': -0.28638165860935794, 'gripper.pos': 0.6916313171386719}
+INFO 2026-01-28 11:27:01 t_client.py:379 [DEBUG] Action tensor shape: torch.Size([7])
+INFO 2026-01-28 11:27:01 t_client.py:380 [DEBUG] Action tensor values: tensor([ 1.4495e-01,  2.7543e-03,  1.7251e-02,  8.5535e-02, -2.8416e+00,
+         4.0162e-03,  6.8366e-01], device='cuda:0')
+INFO 2026-01-28 11:27:01 t_client.py:405 [DEBUG] Pre-IK action_dict keys: dict_keys(['ee.x', 'ee.y', 'ee.z', 'ee.wx', 'ee.wy', 'ee.wz', 'ee.gripper_pos'])
+INFO 2026-01-28 11:27:01 t_client.py:406 [DEBUG] Pre-IK action_dict values: {'ee.x': 0.14494799077510834, 'ee.y': 0.0027543194591999054, 'ee.z': 0.017250634729862213, 'ee.wx': 0.08553549647331238, 'ee.wy': -2.8416337966918945, 'ee.wz': 0.00401616096496582, 'ee.gripper_pos': 0.6836605072021484}
+INFO 2026-01-28 11:27:01 t_client.py:414 [DEBUG] Post-IK action_dict: {'shoulder_pan.pos': -2.635657197598777, 'shoulder_lift.pos': -68.38860572068702, 'elbow_flex.pos': 96.82986737710914, 'wrist_flex.pos': 94.99984017946129, 'wrist_roll.pos': 8.749665328498404, 'gripper.pos': 0.6836605072021484}
+INFO 2026-01-28 11:27:01 t_client.py:419 [DEBUG] Would send action (robot execution disabled): {'shoulder_pan.pos': -2.635657197598777, 'shoulder_lift.pos': -68.38860572068702, 'elbow_flex.pos': 96.82986737710914, 'wrist_flex.pos': 94.99984017946129, 'wrist_roll.pos': 8.749665328498404, 'gripper.pos': 0.6836605072021484}
+INFO 2026-01-28 11:27:01 t_client.py:379 [DEBUG] Action tensor shape: torch.Size([7])

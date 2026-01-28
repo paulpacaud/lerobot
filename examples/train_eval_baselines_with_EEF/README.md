@@ -99,8 +99,8 @@ python -m lerobot.async_inference.robot_client \
   --robot.id=follower_arm \
   --robot.cameras="{ front: {type: intelrealsense, serial_number_or_name: 147122078460, width: 640, height: 480, fps: 30, use_depth: false}}" \
   --task="put the banana in the blue plate, then put the green toy in the pink plate" \
-  --policy_type=pi0 \
---pretrained_name_or_path=/home/ppacaud/data/lerobot/models/pi0_multitasks_3tasks_joints_20260128_033351-ckpt10k \
+  --policy_type=groot \
+--pretrained_name_or_path=/home/ppacaud/data/lerobot/models/groot1.5_multitasks_3tasks_joints_20260128_033421-ckpt8k \
   --policy_device=cuda \
   --actions_per_chunk=50 \
   --chunk_size_threshold=0 \
