@@ -375,6 +375,10 @@ class RobotClient:
             return not self.action_queue.empty()
 
     def _action_tensor_to_action_dict(self, action_tensor: torch.Tensor) -> dict[str, float]:
+        # DEBUG: Print action tensor shape and values
+        self.logger.info(f"[DEBUG] Action tensor shape: {action_tensor.shape}")
+        self.logger.info(f"[DEBUG] Action tensor values: {action_tensor}")
+
         if self.ik_processor is not None:
             # EE mode: tensor is [x, y, z, wx, wy, wz, gripper]
             ee_names = ["ee.x", "ee.y", "ee.z", "ee.wx", "ee.wy", "ee.wz", "ee.gripper_pos"]
@@ -397,12 +401,22 @@ class RobotClient:
 
         action_dict = self._action_tensor_to_action_dict(timed_action.get_action())
 
+        # DEBUG: Print pre-IK action
+        self.logger.info(f"[DEBUG] Pre-IK action_dict keys: {action_dict.keys()}")
+        self.logger.info(f"[DEBUG] Pre-IK action_dict values: {action_dict}")
+
         # If in EE mode, apply IK to convert EE poses to joint commands
         if self.ik_processor is not None:
             robot_obs = self.robot.get_observation()
             action_dict = self.ik_processor((action_dict, robot_obs))
 
-        _performed_action = self.robot.send_action(action_dict)
+        # DEBUG: Print post-IK action
+        self.logger.info(f"[DEBUG] Post-IK action_dict: {action_dict}")
+
+        # DEBUG: Comment out for safe debugging (no robot movement)
+        # _performed_action = self.robot.send_action(action_dict)
+        _performed_action = action_dict  # Return action without executing
+        self.logger.info(f"[DEBUG] Would send action (robot execution disabled): {action_dict}")
         with self.latest_action_lock:
             self.latest_action = timed_action.get_timestep()
 

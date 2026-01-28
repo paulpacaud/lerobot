@@ -88,24 +88,45 @@ python src/lerobot/scripts/lerobot_train.py \
 
 ### Step 3: Run Inference
 
+`ssh -N -L 8080:127.0.0.1:8080 ppacaud@dgx-station.paris.inria.fr`
+
 **For joint-space policy** (standard):
 ```bash
 python -m lerobot.async_inference.robot_client \
-    --pretrained_name_or_path=/path/to/outputs/pi0_joints/pretrained_model \
-    --robot.type=so100_follower \
-    --robot.port=/dev/ttyACM0 \
-    ...
+  --server_address=127.0.0.1:8080 \
+  --robot.type=so100_follower \
+  --robot.port=/dev/ttyACM0 \
+  --robot.id=follower_arm \
+  --robot.cameras="{ front: {type: intelrealsense, serial_number_or_name: 147122078460, width: 640, height: 480, fps: 30, use_depth: false}}" \
+  --task="put the banana in the blue plate, then put the green toy in the pink plate" \
+  --policy_type=pi0 \
+--pretrained_name_or_path=/home/ppacaud/data/lerobot/models/pi0_multitasks_3tasks_joints_20260128_033351-ckpt10k \
+  --policy_device=cuda \
+  --actions_per_chunk=50 \
+  --chunk_size_threshold=0 \
+  --aggregate_fn_name=weighted_average \
+  --debug_visualize_queue_size=True
 ```
+
 
 **For EE-space policy** (requires IK conversion):
 ```bash
 python -m lerobot.async_inference.robot_client \
-    --pretrained_name_or_path=/path/to/outputs/pi0_ee/pretrained_model \
-    --robot.type=so100_follower \
-    --robot.port=/dev/ttyACM0 \
-    --action_space=ee \
-    --urdf_path=./URDF/SO101/so101_new_calib.urdf \
-    ...
+  --server_address=127.0.0.1:8080 \
+  --robot.type=so100_follower \
+  --robot.port=/dev/ttyACM0 \
+  --robot.id=follower_arm \
+  --robot.cameras="{ front: {type: intelrealsense, serial_number_or_name: 147122078460, width: 640, height: 480, fps: 30, use_depth: false}}" \
+  --task="put the banana in the blue plate, then put the green toy in the pink plate" \
+  --policy_type=pi0 \
+--pretrained_name_or_path=/home/ppacaud/data/lerobot/models/pi0_multitasks_3tasks_ee_20260128_033350-ckpt10k \
+  --policy_device=cuda \
+  --actions_per_chunk=50 \
+  --chunk_size_threshold=0 \
+  --aggregate_fn_name=weighted_average \
+  --debug_visualize_queue_size=True \
+  --action_space=ee \
+  --urdf_path=./URDF/SO101/so101_new_calib.urdf
 ```
 
 ## Trimming Strategy
