@@ -82,6 +82,23 @@ class EagleBackbone(nn.Module):
             print(f"[GROOT] Warning: failed to prepare Eagle cache for backbone: {exc}")
 
         config = AutoConfig.from_pretrained(str(cache_dir), trust_remote_code=True)
+
+        # Override attention implementation based on GPU capability
+        # (config.json may have flash_attention_2 hardcoded, which requires Ampere+)
+        if torch.cuda.is_available():
+            capability = torch.cuda.get_device_capability()
+            if capability[0] >= 8:  # Ampere or newer
+                attn_impl = "flash_attention_2"
+            else:
+                attn_impl = "sdpa"  # Fallback for V100, etc.
+        else:
+            attn_impl = "sdpa"
+        config._attn_implementation = attn_impl
+        if hasattr(config, "vision_config"):
+            config.vision_config._attn_implementation = attn_impl
+        if hasattr(config, "text_config"):
+            config.text_config._attn_implementation = attn_impl
+
         self.eagle_model = AutoModel.from_config(config, trust_remote_code=True)
 
         if project_to_dim is not None:

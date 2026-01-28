@@ -32,15 +32,39 @@ Notes:
   from LeRobot, see `GrootPolicy.finetune_with_groot_runner` below.
 """
 
+import builtins
 import os
 from collections import deque
+from pathlib import Path
+from typing import TypeVar
 
 import torch
+from huggingface_hub import hf_hub_download
+from huggingface_hub.constants import SAFETENSORS_SINGLE_FILE
+from huggingface_hub.errors import HfHubHTTPError
 from torch import Tensor
 
+from lerobot.configs.policies import PreTrainedConfig
 from lerobot.policies.groot.configuration_groot import GrootConfig
 from lerobot.policies.groot.groot_n1 import GR00TN15
 from lerobot.policies.pretrained import PreTrainedPolicy
+
+T = TypeVar("T", bound="GrootPolicy")
+
+
+def _get_default_attn_implementation() -> str:
+    """Return appropriate attention implementation based on GPU capability.
+
+    FlashAttention requires Ampere (compute capability 8.0+) or newer GPUs.
+    For older GPUs like V100 (compute capability 7.0), fall back to SDPA.
+    """
+    if torch.cuda.is_available():
+        capability = torch.cuda.get_device_capability()
+        if capability[0] >= 8:  # Ampere or newer
+            return "flash_attention_2"
+    return "sdpa"  # Fallback for V100, CPU, etc.
+
+DEFAULT_GROOT_BASE_MODEL = "nvidia/GR00T-N1.5-3B"
 
 
 class GrootPolicy(PreTrainedPolicy):
@@ -48,6 +72,102 @@ class GrootPolicy(PreTrainedPolicy):
 
     name = "groot"
     config_class = GrootConfig
+
+    @classmethod
+    def from_pretrained(
+        cls: builtins.type[T],
+        pretrained_name_or_path: str | Path,
+        *,
+        config: PreTrainedConfig | None = None,
+        force_download: bool = False,
+        resume_download: bool | None = None,
+        proxies: dict | None = None,
+        token: str | bool | None = None,
+        cache_dir: str | Path | None = None,
+        local_files_only: bool = False,
+        revision: str | None = None,
+        strict: bool = False,
+        **kwargs,
+    ) -> T:
+        """Load a pretrained GROOT policy.
+
+        Handles the case where saved config contains a stale base_model_path.
+        When loading from checkpoint, weights come from pretrained_name_or_path
+        after creating model architecture from a valid base model.
+        """
+        if pretrained_name_or_path is None:
+            raise ValueError("pretrained_name_or_path is required")
+
+        model_id = str(pretrained_name_or_path)
+
+        # Check if checkpoint exists
+        checkpoint_file = None
+        if os.path.isdir(model_id):
+            potential_checkpoint = os.path.join(model_id, SAFETENSORS_SINGLE_FILE)
+            if os.path.exists(potential_checkpoint):
+                checkpoint_file = potential_checkpoint
+                print(f"[GROOT] Found local checkpoint: {checkpoint_file}")
+        else:
+            try:
+                checkpoint_file = hf_hub_download(
+                    repo_id=model_id,
+                    filename=SAFETENSORS_SINGLE_FILE,
+                    revision=revision,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    token=token,
+                    local_files_only=local_files_only,
+                )
+                print(f"[GROOT] Downloaded checkpoint from HuggingFace: {checkpoint_file}")
+            except (HfHubHTTPError, Exception) as e:
+                print(f"[GROOT] No checkpoint found in HuggingFace Hub: {e}")
+
+        # Load config
+        if config is None:
+            config = PreTrainedConfig.from_pretrained(
+                pretrained_name_or_path=pretrained_name_or_path,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                token=token,
+                cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                revision=revision,
+                **kwargs,
+            )
+
+        if checkpoint_file:
+            # Loading from fine-tuned checkpoint
+            original_base_path = config.base_model_path
+
+            # Validate base_model_path exists, or use fallback
+            if not os.path.exists(config.base_model_path) and not config.base_model_path.startswith(
+                ("nvidia/", "http")
+            ):
+                print(f"[GROOT] Warning: Saved base_model_path '{config.base_model_path}' not found locally")
+                print(f"[GROOT] Using default base model for architecture: {DEFAULT_GROOT_BASE_MODEL}")
+                config.base_model_path = DEFAULT_GROOT_BASE_MODEL
+
+            print(f"[GROOT] Creating model architecture from: {config.base_model_path}")
+            instance = cls(config, **kwargs)
+
+            # Load fine-tuned weights from checkpoint
+            print(f"[GROOT] Loading fine-tuned weights from: {checkpoint_file}")
+            policy = cls._load_as_safetensor(instance, checkpoint_file, config.device, strict)
+
+            # Restore original path for reference
+            policy.config.base_model_path = original_base_path
+        else:
+            # No checkpoint - normal flow
+            print(f"[GROOT] No checkpoint found, loading base model from: {config.base_model_path}")
+            instance = cls(config, **kwargs)
+            policy = instance
+
+        policy.to(config.device)
+        policy.eval()
+        return policy
 
     def __init__(self, config: GrootConfig, **kwargs):
         """Initialize Groot policy wrapper."""
