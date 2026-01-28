@@ -16,6 +16,7 @@
 
 import copy
 
+import torch
 from transformers.configuration_utils import PretrainedConfig
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
@@ -24,6 +25,19 @@ from transformers.models.siglip.configuration_siglip import SiglipVisionConfig
 from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
+
+
+def _get_default_attn_implementation() -> str:
+    """Return appropriate attention implementation based on GPU capability.
+
+    FlashAttention requires Ampere (compute capability 8.0+) or newer GPUs.
+    For older GPUs like V100 (compute capability 7.0), fall back to SDPA.
+    """
+    if torch.cuda.is_available():
+        capability = torch.cuda.get_device_capability()
+        if capability[0] >= 8:  # Ampere or newer
+            return "flash_attention_2"
+    return "sdpa"  # Fallback for V100, CPU, etc.
 
 
 class Eagle25VLConfig(PretrainedConfig):
@@ -49,7 +63,7 @@ class Eagle25VLConfig(PretrainedConfig):
         max_dynamic_tiles=6,
         mlp_checkpoint=False,
         initializer_range=0.02,
-        _attn_implementation="flash_attention_2",
+        _attn_implementation=None,
         _attn_implementation_autoset=False,
         llm_config=None,
         image_token_index=None,
@@ -58,6 +72,11 @@ class Eagle25VLConfig(PretrainedConfig):
         **kwargs,
     ):
         super().__init__(**kwargs)
+
+        # Auto-detect attention implementation based on GPU capability if not specified
+        if _attn_implementation is None:
+            _attn_implementation = _get_default_attn_implementation()
+            logger.info(f"Auto-detected attention implementation: {_attn_implementation}")
 
         if vision_config is None:
             vision_config = {"model_type": "siglip_vision_model"}

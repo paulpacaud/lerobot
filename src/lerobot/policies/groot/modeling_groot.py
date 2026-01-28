@@ -51,6 +51,19 @@ from lerobot.policies.pretrained import PreTrainedPolicy
 
 T = TypeVar("T", bound="GrootPolicy")
 
+
+def _get_default_attn_implementation() -> str:
+    """Return appropriate attention implementation based on GPU capability.
+
+    FlashAttention requires Ampere (compute capability 8.0+) or newer GPUs.
+    For older GPUs like V100 (compute capability 7.0), fall back to SDPA.
+    """
+    if torch.cuda.is_available():
+        capability = torch.cuda.get_device_capability()
+        if capability[0] >= 8:  # Ampere or newer
+            return "flash_attention_2"
+    return "sdpa"  # Fallback for V100, CPU, etc.
+
 DEFAULT_GROOT_BASE_MODEL = "nvidia/GR00T-N1.5-3B"
 
 
