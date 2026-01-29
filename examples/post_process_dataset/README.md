@@ -13,10 +13,12 @@ huggingface-cli download paulpacaud/put_banana_and_toy_in_plates \
   --local-dir put_banana_and_toy_in_plates \
   --local-dir-use-symlinks False
 
-huggingface-cli download paulpacaud/put_sockets_into_drawer \
+huggingface-cli download paulpacaud/put_socks_into_drawer \
   --repo-type dataset \
-  --local-dir put_sockets_into_drawer \
+  --local-dir put_socks_into_drawer \
   --local-dir-use-symlinks False
+
+huggingface-cli upload paulpacaud/move_plates_from_rack_to_box $HOME/lerobot_datasets/move_plates_from_rack_to_box --repo-type dataset
 
 ### Full Pipeline
 
