@@ -70,7 +70,6 @@ python -m examples.post_process_dataset.add_point_cloud_to_dataset \
 python -m examples.post_process_dataset.convert_to_pointact_format --dataset_dir=$HOME/lerobot_datasets/put_cube_in_spot_v2 --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_pointact --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf
 ```
 
-
 ### 11. Visualize PointAct dataset
 ```bash
 python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/put_sockets_into_drawer_pointact/ --episode_index=10 --pcd_frame=100

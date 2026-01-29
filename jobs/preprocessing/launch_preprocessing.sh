@@ -6,6 +6,8 @@ DATASETS=(
     "open_microwave"
     "put_banana_and_toy_in_plates"
     "put_socks_into_drawer"
+    "move_plates_from_rack_to_box"
+    "put_items_in_box"
 )
 
 for dataset in "${DATASETS[@]}"; do

@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Standalone motion script for LeRobot follower arms.
 This script creates a slow, smooth motion sequence for a follower arm without

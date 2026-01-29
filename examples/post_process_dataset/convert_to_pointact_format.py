@@ -158,6 +158,122 @@ def load_info(root: Path) -> dict:
         return json.load(f)
 
 
+def load_stats(root: Path) -> dict:
+    """Load stats.json from dataset root."""
+    stats_path = root / "meta" / "stats.json"
+    if stats_path.exists():
+        with open(stats_path) as f:
+            return json.load(f)
+    return {}
+
+
+def save_stats(root: Path, stats: dict) -> None:
+    """Save stats.json to dataset root."""
+    with open(root / "meta" / "stats.json", "w") as f:
+        json.dump(stats, f, indent=4)
+
+
+def compute_array_stats(arr: np.ndarray) -> dict:
+    """Compute statistics for a numpy array.
+
+    Returns dict with min, max, mean, std, count, and quantiles (q01, q10, q50, q90, q99).
+    """
+    if arr.ndim == 1:
+        arr = arr.reshape(-1, 1)
+
+    return {
+        "min": np.min(arr, axis=0).tolist(),
+        "max": np.max(arr, axis=0).tolist(),
+        "mean": np.mean(arr, axis=0).tolist(),
+        "std": np.std(arr, axis=0).tolist(),
+        "count": [len(arr)],
+        "q01": np.percentile(arr, 1, axis=0).tolist(),
+        "q10": np.percentile(arr, 10, axis=0).tolist(),
+        "q50": np.percentile(arr, 50, axis=0).tolist(),
+        "q90": np.percentile(arr, 90, axis=0).tolist(),
+        "q99": np.percentile(arr, 99, axis=0).tolist(),
+    }
+
+
+def regenerate_stats(
+    dataset_path: Path,
+    info: dict,
+    state_key: str,
+    action_key: str,
+    rgb_key: str,
+    depth_key: str,
+    point_cloud_key: str,
+    output_image_key: str,
+    output_point_cloud_key: str,
+    output_ee_state_key: str,
+    output_joint_state_key: str,
+    output_gripper_state_key: str,
+    output_joint_action_key: str,
+) -> None:
+    """Regenerate stats.json to match the new feature definitions after conversion.
+
+    This function:
+    1. Loads existing stats
+    2. Renames keys for features that were renamed but have compatible stats
+    3. Computes new stats from parquet files for transformed features
+    4. Removes stats for deleted features
+    5. Saves the updated stats
+    """
+    logging.info("Regenerating dataset statistics...")
+
+    # Load existing stats
+    stats = load_stats(dataset_path)
+
+    # Remove stats for deleted features
+    if depth_key in stats:
+        del stats[depth_key]
+        logging.info(f"  Removed stats for deleted feature: {depth_key}")
+
+    # Rename keys for features that were renamed
+    if rgb_key in stats and rgb_key != output_image_key:
+        stats[output_image_key] = stats.pop(rgb_key)
+        logging.info(f"  Renamed stats key: {rgb_key} -> {output_image_key}")
+
+    if point_cloud_key in stats and point_cloud_key != output_point_cloud_key:
+        stats[output_point_cloud_key] = stats.pop(point_cloud_key)
+        logging.info(f"  Renamed stats key: {point_cloud_key} -> {output_point_cloud_key}")
+
+    # Collect all data from parquet files for computing new stats
+    logging.info("  Reading parquet files to compute new stats...")
+    data_dir = dataset_path / "data"
+    parquet_files = list(data_dir.glob("**/*.parquet"))
+
+    # Collect arrays for each feature that needs recomputation
+    feature_data = {
+        state_key: [],
+        action_key: [],
+        output_ee_state_key: [],
+        output_joint_state_key: [],
+        output_gripper_state_key: [],
+        output_joint_action_key: [],
+    }
+
+    for parquet_path in tqdm(parquet_files, desc="  Reading parquet files"):
+        df = pd.read_parquet(parquet_path)
+
+        for key in feature_data:
+            if key in df.columns:
+                # Convert list-of-arrays column to numpy array
+                values = np.array(df[key].tolist())
+                feature_data[key].append(values)
+
+    # Compute stats for each feature
+    for key, data_list in feature_data.items():
+        if data_list:
+            all_data = np.concatenate(data_list, axis=0)
+            stats[key] = compute_array_stats(all_data)
+            logging.info(f"  Computed stats for: {key} (shape: {all_data.shape})")
+
+    # Save updated stats
+    save_stats(dataset_path, stats)
+    logging.info("Stats regeneration complete!")
+
+
 def save_info(root: Path, info: dict) -> None:
     """Save info.json to dataset root."""
     with open(root / "meta" / "info.json", "w") as f:
@@ -1009,6 +1125,23 @@ def convert_to_pointact_format(
     }
 
     save_info(dataset_path, info)
+
+    # Regenerate stats.json to match the new feature definitions
+    regenerate_stats(
+        dataset_path=dataset_path,
+        info=info,
+        state_key=state_key,
+        action_key=action_key,
+        rgb_key=rgb_key,
+        depth_key=depth_key,
+        point_cloud_key=point_cloud_key,
+        output_image_key=output_image_key,
+        output_point_cloud_key=output_point_cloud_key,
+        output_ee_state_key=output_ee_state_key,
+        output_joint_state_key=output_joint_state_key,
+        output_gripper_state_key=output_gripper_state_key,
+        output_joint_action_key=output_joint_action_key,
+    )
 
     logging.info("Conversion to PointAct format complete!")
     logging.info("Output features:")
