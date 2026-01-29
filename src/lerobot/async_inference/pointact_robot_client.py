@@ -486,7 +486,8 @@ class PointActRobotClient:
         self.logger.info(f"Action chunk: {chunk_size} actions, each with {action_arr.shape[1]} dims")
 
         # Store each action in queue
-        self.action_queue = [action_arr[i].astype(np.float32) for i in range(chunk_size)]
+        n = min(chunk_size, self.config.run_n_actions) if self.config.run_n_actions > 0 else chunk_size
+        self.action_queue = [action_arr[i].astype(np.float32) for i in range(n)]
         self.logger.info(f"Stored {len(self.action_queue)} actions in queue")
 
     def execute_single_action(self, joint_values: np.ndarray) -> dict[str, float]:
@@ -505,7 +506,11 @@ class PointActRobotClient:
         }
 
         # Send action to robot
-        performed_action = self.robot.send_action(joint_action)
+        if self.config.dry_run:
+            self.logger.info("[DRY RUN] Skipping robot motion")
+            performed_action = joint_action
+        else:
+            performed_action = self.robot.send_action(joint_action)
 
         self.logger.info(
             f"Executed action #{self.timestep} (queue: {len(self.action_queue)} left) | "

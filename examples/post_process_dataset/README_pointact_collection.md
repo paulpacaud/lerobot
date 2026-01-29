@@ -110,4 +110,6 @@ lerobot-record \
     --dataset.num_episodes=50 \
     --dataset.reset_time_s=30 \
     --dataset.single_task="put the yellow mustard bottle in the cardboard box, then put the sugar box in the cardboard box, then put the red crackers box into the cardboard box" \
+    --lerobot-record \
+    --dataset.episode_time_s=100 \
     --resume=true

@@ -122,6 +122,14 @@ class PointActClientConfig:
         default=DEFAULT_FPS,
         metadata={"help": "Control frequency (frames per second)"},
     )
+    run_n_actions: int = field(
+        default=0,
+        metadata={"help": "Number of actions to execute per chunk (0 = execute all)"},
+    )
+    dry_run: bool = field(
+        default=False,
+        metadata={"help": "Disable robot motion (observations and inference still run)"},
+    )
 
     # Debug configuration
     debug_dir: str = field(
