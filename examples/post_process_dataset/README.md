@@ -28,6 +28,8 @@ huggingface-cli download paulpacaud/open_microwave \
   --local-dir open_microwave \
   --local-dir-use-symlinks False
 
+huggingface-cli upload paulpacaud/move_plates_from_rack_to_box $HOME/lerobot_datasets/move_plates_from_rack_to_box --repo-type dataset
+
 ### Full Pipeline
 
 ```bash
@@ -71,7 +73,7 @@ python -m examples.post_process_dataset.convert_to_pointact_format --dataset_dir
 
 ### 11. Visualize PointAct dataset
 ```bash
-python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/stack_cups_pointact/ --episode_index=10 --pcd_frame=100
+python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/put_sockets_into_drawer_pointact/ --episode_index=10 --pcd_frame=100
 ```
 
 # 5. Replay episode
@@ -98,3 +100,6 @@ lerobot-edit-dataset \
 
 # Train baselines on EEF pose 
 As we trim the datasets for pointact, we need to reuse the same data for training baselines, but in lerobot v3 format.
+```bash
+
+```

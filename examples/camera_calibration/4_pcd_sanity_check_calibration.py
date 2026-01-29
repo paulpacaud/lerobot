@@ -498,12 +498,12 @@ def main():
 
     # Visualize
     geometries = [pcd, coord_frame] + world_axes
-    o3d.visualization.draw_geometries(
-        geometries,
-        window_name="Point Cloud Calibration Check - World Frame",
-        width=1280,
-        height=720
-    )
+    # o3d.visualization.draw_geometries(
+    #     geometries,
+    #     window_name="Point Cloud Calibration Check - World Frame",
+    #     width=1280,
+    #     height=720
+    # )
 
     print("\nDone.")
 
