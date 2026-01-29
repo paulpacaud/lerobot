@@ -93,7 +93,7 @@ lerobot-record \
     --dataset.single_task="stack the yellow cup onto the blue cup, then stack the orange cup onto the yellow cup" \
     --resume=true
 
-## move_plates_from_rack_to_box
+## put_items_in_box
 
 lerobot-record \
     --robot.type=so100_follower \
@@ -104,10 +104,10 @@ lerobot-record \
     --teleop.id=so100_leader \
    --robot.cameras="{ front: {type: intelrealsense, serial_number_or_name: 147122078460, width: 640, height: 480, fps: 30, use_depth: true}}" \
     --display_data=true \
-    --dataset.root=$HOME/lerobot_datasets/move_plates_from_rack_to_box \
+    --dataset.root=$HOME/lerobot_datasets/put_items_in_box \
     --dataset.push_to_hub=False \
-    --dataset.repo_id=${HF_USER}/move_plates_from_rack_to_box \
+    --dataset.repo_id=${HF_USER}/put_items_in_box \
     --dataset.num_episodes=50 \
     --dataset.reset_time_s=30 \
-    --dataset.single_task="move each plate from the rack to the box" \
+    --dataset.single_task="put the yellow mustard bottle in the cardboard box, then put the sugar box in the cardboard box, then put the red crackers box into the cardboard box" \
     --resume=true

@@ -43,15 +43,22 @@ python -m lerobot.async_inference.pointact_robot_client \
 ```
 """
 
+import json
 import logging
 import time
 from dataclasses import asdict
+from datetime import datetime
+from pathlib import Path
 from pprint import pformat
 from typing import Any
 
 import draccus
+import msgpack
+import msgpack_numpy
 import numpy as np
 import zmq
+
+msgpack_numpy.patch()
 
 from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig  # noqa: F401
 from lerobot.cameras.realsense.configuration_realsense import (
@@ -174,6 +181,85 @@ class PointActRobotClient:
         # Action queue for chunked actions
         self.action_queue: list[np.ndarray] = []
         self.action_chunk_index = 0
+
+        # Initialize debug session if debug_dir is set
+        self.debug_session_dir = None
+        if config.debug_dir:
+            self._init_debug_session()
+
+    def _init_debug_session(self) -> None:
+        """Initialize debug session directory and save metadata."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_name = f"session_{timestamp}"
+        self.debug_session_dir = Path(self.config.debug_dir) / session_name
+        self.debug_session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save session metadata
+        metadata = {
+            "session_start": datetime.now().isoformat(),
+            "task": self.config.task,
+            "repo_id": self.config.repo_id,
+            "fps": self.config.fps,
+            "server_address": self.config.server_address,
+            "urdf_path": self.config.urdf_path,
+            "translation_offset": list(self.config.translation_offset),
+            "target_frame": self.config.target_frame,
+            "joint_names": self.config.joint_names,
+            "image_size": self.config.image_size,
+            "voxel_size": self.config.voxel_size,
+            "workspace": self.config.workspace,
+        }
+        metadata_path = self.debug_session_dir / "metadata.json"
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+        self.logger.info(f"Debug session initialized: {self.debug_session_dir}")
+
+    def _save_debug_input(self, processed_obs: dict[str, Any]) -> None:
+        """Save input observation data to disk.
+
+        Args:
+            processed_obs: Preprocessed observation dict
+        """
+        if self.debug_session_dir is None:
+            return
+
+        input_data = {
+            "timestamp": time.time(),
+            "timestep": self.timestep,
+            "observation.state": processed_obs.get("observation.state"),
+            "observation.states.joint_state": processed_obs.get("observation.states.joint_state"),
+            "observation.states.ee_state": processed_obs.get("observation.states.ee_state"),
+            "observation.images.front_image": processed_obs.get("observation.images.front_image"),
+            "observation.points": processed_obs.get("observation.points.frontview"),
+            "task": processed_obs.get("task", self.config.task),
+        }
+
+        filename = f"step_{self.timestep:05d}_input.msgpack"
+        filepath = self.debug_session_dir / filename
+        with open(filepath, "wb") as f:
+            f.write(msgpack.packb(input_data))
+
+    def _save_debug_output(self, response: dict[str, Any], request_time_ms: float) -> None:
+        """Save output response data to disk.
+
+        Args:
+            response: Server response dict
+            request_time_ms: Time taken for the request in milliseconds
+        """
+        if self.debug_session_dir is None:
+            return
+
+        output_data = {
+            "timestamp": time.time(),
+            "timestep": self.timestep,
+            "action": response.get("action") if response else None,
+            "request_time_ms": request_time_ms,
+        }
+
+        filename = f"step_{self.timestep:05d}_output.msgpack"
+        filepath = self.debug_session_dir / filename
+        with open(filepath, "wb") as f:
+            f.write(msgpack.packb(output_data))
 
     def preprocess_observation(self, raw_obs: dict[str, Any]) -> dict[str, Any]:
         """Preprocess robot observation to PointAct format.
@@ -307,6 +393,9 @@ class PointActRobotClient:
             "data": {"batch": batch, "options": {'pred_rot_type': None}},
         }
 
+        # Save debug input before sending
+        self._save_debug_input(processed_obs)
+
         try:
             # Send ZMQ request
             start_time = time.perf_counter()
@@ -323,12 +412,17 @@ class PointActRobotClient:
             # Check for server error
             if isinstance(result, dict) and "error" in result:
                 self.logger.error(f"Server error: {result['error']}")
+                self._save_debug_output(result, request_time)
                 return None
 
             self.logger.debug(
                 f"Sent observation #{self.timestep}, received action | "
                 f"Request time: {request_time:.2f}ms"
             )
+
+            # Save debug output after receiving
+            self._save_debug_output(result, request_time)
+
             return result
 
         except zmq.ZMQError as e:

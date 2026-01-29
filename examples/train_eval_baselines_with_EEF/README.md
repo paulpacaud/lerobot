@@ -18,16 +18,6 @@ python -m examples.train_eval_baselines_with_EEF.prepare_baseline_datasets \
     --urdf_path=./URDF/SO101/so101_new_calib.urdf \
     --num_workers=8
     
-python -m examples.train_eval_baselines_with_EEF.prepare_baseline_datasets \
-    --input_dir=/home/ppacaud/lerobot_datasets/put_cube_in_spot \
-    --urdf_path=./URDF/SO101/so101_new_calib.urdf \
-    --num_workers=8
-    
-python -m examples.train_eval_baselines_with_EEF.prepare_baseline_datasets \
-    --input_dir=/home/ppacaud/lerobot_datasets/put_sockets_into_drawer \
-    --urdf_path=./URDF/SO101/so101_new_calib.urdf \
-    --num_workers=8
-    
 ###############
 
 lerobot-edit-dataset \
@@ -102,9 +92,9 @@ python -m lerobot.async_inference.robot_client \
   --robot.port=/dev/ttyACM0 \
   --robot.id=follower_arm \
   --robot.cameras="{ front: {type: intelrealsense, serial_number_or_name: 147122078460, width: 640, height: 480, fps: 30, use_depth: false}}" \
-  --task="put the cube in the green square spot" \
+  --task="stack the yellow cup onto the blue cup, then stack the orange cup onto the yellow cup" \
   --policy_type=pi0 \
---pretrained_name_or_path=/home/ppacaud/data/lerobot/models/pi0_multitasks_3tasks_joints_20260128_033351-ckpt10k \
+--pretrained_name_or_path=/home/ppacaud/data/lerobot/models/pi0_multitasks_5tasks_joints_20260128_224714-ckpt10k \
   --policy_device=cuda \
   --actions_per_chunk=50 \
   --chunk_size_threshold=0 \
@@ -176,7 +166,6 @@ The trimming is computed on **EE pose deltas** (not joint deltas) because:
 
 # cleps
 
-ssh -N -v -L 17000:gpu017:17000 ppacaud@cleps.inria.fr
 ssh -N -v -L 17000:gpu017:17000 ppacaud@cleps.inria.fr
 
 ```bash

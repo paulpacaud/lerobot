@@ -25,7 +25,7 @@ from .constants import DEFAULT_FPS
 DEFAULT_WORKSPACE = {
     "X_BBOX": [-0.21, 0.23],
     "Y_BBOX": [-0.35, 0.3],
-    "Z_BBOX": [0.025, 0.4],
+    "Z_BBOX": [0, 0.4],
 }
 
 # Default translation offset from robot base to world frame origin
@@ -123,6 +123,12 @@ class PointActClientConfig:
         metadata={"help": "Control frequency (frames per second)"},
     )
 
+    # Debug configuration
+    debug_dir: str = field(
+        default="",
+        metadata={"help": "Directory to save debug data (empty to disable)"},
+    )
+
     @property
     def environment_dt(self) -> float:
         """Environment time step, in seconds."""
@@ -173,4 +179,5 @@ class PointActClientConfig:
             "repo_id": self.repo_id,
             "task": self.task,
             "fps": self.fps,
+            "debug_dir": self.debug_dir,
         }

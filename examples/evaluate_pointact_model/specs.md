@@ -206,3 +206,27 @@ Plan: PointAct Robot Client
  ├──────────────────────────────────────────────────────┼────────┼──────────────────────────────────────────────┤                                                                                                                                                                                                                                                                   
  │ src/lerobot/async_inference/pointact_utils.py        │ Create │ FK, point cloud, and batch packing utilities │                                                                                                                                                                                                                                                                   
  └──────────────────────────────────────────────────────┴────────┴──────────────────────────────────────────────┘ 
+ 
+
+
+
+
+# usage
+
+`ssh -N -v -L 17000:gpu017:17000 ppacaud@cleps.inria.fr`
+
+```bash
+python -m lerobot.async_inference.pointact_robot_client --server_address=localhost:17000 --robot.type=so100_follower --robot.port=/dev/ttyACM0 --robot.id=follower_arm --robot.cameras="{ front: {type: intelrealsense, serial_number_or_name: 147122078460, width: 640, height: 480, fps: 30, use_depth: true}}" --urdf_path=./examples/post_process_dataset/constants/SO101/so101_new_calib.urdf --intrinsics_file=./examples/post_process_dataset/constants/intrinsics.npz --extrinsics_file=./examples/post_process_dataset/constants/extrinsics.npz --task="put the banana in the blue plate, then put the green toy in the pink plate" --repo_id=put_banana_and_toy_in_plates_pointact --fps=30 --debug_dir=$HOME/lerobot_datasets/debug_logs
+```
+
+# fake server
+
+
+# Terminal 1: Start fake server                                                                                                                                                                                                                                                                                                                                                   
+  python -m lerobot.async_inference.fake_pointact_server --port=17000                                                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                                                                                                                    
+  # Terminal 2: Run client with debug logging                                                                                                                                                                                                                                                                                                                                       
+  python -m lerobot.async_inference.pointact_robot_client --server_address=localhost:17000 --debug_dir=./debug_logs ...                                                                                                                                                                                                                                                             
+                                                                                                                                                                                                                                                                                                                                                                                    
+  # Terminal 3: Visualize saved session                                                                                                                                                                                                                                                                                                                                             
+  python -m lerobot.async_inference.visualize_debug_session --session_dir=./debug_logs/session_20260129_143052 --frame=0 --interactive 
