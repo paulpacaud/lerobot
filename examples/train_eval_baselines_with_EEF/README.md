@@ -24,38 +24,38 @@ python -m examples.train_eval_baselines_with_EEF.prepare_baseline_datasets \
     --num_workers=8
     
 python -m examples.train_eval_baselines_with_EEF.prepare_baseline_datasets \
-    --input_dir=/home/ppacaud/lerobot_datasets/put_sockets_into_drawer \
+    --input_dir=/home/ppacaud/lerobot_datasets/put_socks_into_drawer \
     --urdf_path=./URDF/SO101/so101_new_calib.urdf \
     --num_workers=8
     
 ###############
 
 lerobot-edit-dataset \
-    --repo_id  /home/ppacaud/lerobot_datasets/multitasks_3tasks_ee \
+    --repo_id  /home/ppacaud/lerobot_datasets/multitasks_5tasks_ee \
     --operation.type merge \
-    --operation.repo_ids "['/home/ppacaud/lerobot_datasets/put_cube_in_spot_ee', '/home/ppacaud/lerobot_datasets/put_banana_and_toy_in_plates_ee', '/home/ppacaud/lerobot_datasets/put_sockets_into_drawer_ee']"
+    --operation.repo_ids "['/home/ppacaud/lerobot_datasets/put_cube_in_spot_ee', '/home/ppacaud/lerobot_datasets/put_banana_and_toy_in_plates_ee', '/home/ppacaud/lerobot_datasets/put_socks_into_drawer_ee', '/home/ppacaud/lerobot_datasets/stack_cups_ee', '/home/ppacaud/lerobot_datasets/open_microwave_ee']"
 
 lerobot-edit-dataset \
-    --repo_id  /home/ppacaud/lerobot_datasets/multitasks_3tasks_joints \
+    --repo_id  /home/ppacaud/lerobot_datasets/multitasks_5tasks_joints \
     --operation.type merge \
-    --operation.repo_ids "['/home/ppacaud/lerobot_datasets/put_cube_in_spot_joints', '/home/ppacaud/lerobot_datasets/put_banana_and_toy_in_plates_joints', '/home/ppacaud/lerobot_datasets/put_sockets_into_drawer_joints']"
+    --operation.repo_ids "['/home/ppacaud/lerobot_datasets/put_cube_in_spot_joints', '/home/ppacaud/lerobot_datasets/put_banana_and_toy_in_plates_joints', '/home/ppacaud/lerobot_datasets/put_socks_into_drawer_joints', '/home/ppacaud/lerobot_datasets/stack_cups_joints', '/home/ppacaud/lerobot_datasets/open_microwave_joints']"
 
 ###############
 
-huggingface-cli upload ${HF_USER}/multitasks_3tasks_ee $HOME/lerobot_datasets/multitasks_3tasks_ee --repo-type dataset
+huggingface-cli upload ${HF_USER}/multitasks_5tasks_ee $HOME/lerobot_datasets/multitasks_5tasks_ee --repo-type dataset
 
-huggingface-cli upload ${HF_USER}/multitasks_3tasks_joints $HOME/lerobot_datasets/multitasks_3tasks_joints --repo-type dataset
+huggingface-cli upload ${HF_USER}/multitasks_5tasks_joints $HOME/lerobot_datasets/multitasks_5tasks_joints --repo-type dataset
 
 ###############
 
-huggingface-cli download paulpacaud/multitasks_3tasks_ee \
+huggingface-cli download paulpacaud/multitasks_5tasks_ee \
   --repo-type dataset \
-  --local-dir multitasks_3tasks_ee \
+  --local-dir multitasks_5tasks_ee \
   --local-dir-use-symlinks False
   
-huggingface-cli download paulpacaud/multitasks_3tasks_joints \
+huggingface-cli download paulpacaud/multitasks_5tasks_joints \
   --repo-type dataset \
-  --local-dir multitasks_3tasks_joints \
+  --local-dir multitasks_5tasks_joints \
   --local-dir-use-symlinks False
 ```
 
@@ -84,6 +84,13 @@ python src/lerobot/scripts/lerobot_train.py \
     --policy.type=pi0 \
     --output_dir=/path/to/outputs/pi0_joints \
     ...
+```
+
+# Push/Pull to hub
+```bash
+huggingface-cli upload ${HF_USER}/groot1.5_multitasks_3tasks_joints_20260128_033421-ckpt8k /lustre/fsn1/projects/rech/hjx/uta42aa/data/lerobot/outputs/train/groot1.5_multitasks_3tasks_joints_20260128_033421/checkpoints/008000/ --repo-type model
+
+huggingface-cli download paulpacaud/groot1.5_multitasks_3tasks_ee_20260128_033421-ckpt8k   --repo-type model   --local-dir groot1.5_multitasks_3tasks_ee_20260128_033421-ckpt8k   --local-dir-use-symlinks False
 ```
 
 ### Step 3: Run Inference

@@ -13,21 +13,37 @@ huggingface-cli download paulpacaud/put_banana_and_toy_in_plates \
   --local-dir put_banana_and_toy_in_plates \
   --local-dir-use-symlinks False
 
-huggingface-cli download paulpacaud/put_sockets_into_drawer \
+huggingface-cli download paulpacaud/put_socks_into_drawer \
   --repo-type dataset \
-  --local-dir put_sockets_into_drawer \
+  --local-dir put_socks_into_drawer \
+  --local-dir-use-symlinks False
+
+huggingface-cli download paulpacaud/stack_cups \
+  --repo-type dataset \
+  --local-dir stack_cups \
+  --local-dir-use-symlinks False
+
+huggingface-cli download paulpacaud/open_microwave \
+  --repo-type dataset \
+  --local-dir open_microwave \
   --local-dir-use-symlinks False
 
 ### Full Pipeline
 
 ```bash
-python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_sockets_into_drawer --output_dir=$HOME/lerobot_datasets/put_sockets_into_drawer_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_socks_into_drawer --output_dir=$HOME/lerobot_datasets/put_socks_into_drawer_pointact
 python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_cube_in_spot --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_pointact
 python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_banana_and_toy_in_plates --output_dir=$HOME/lerobot_datasets/put_banana_and_toy_in_plates_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/stack_cups --output_dir=$HOME/lerobot_datasets/stack_cups_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/open_microwave --output_dir=$HOME/lerobot_datasets/open_microwave_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/move_plates_from_rack_to_box/ --output_dir=$HOME/lerobot_datasets/move_plates_from_rack_to_box_pointact
 
-huggingface-cli upload ${HF_USER}/put_sockets_into_drawer_pointact $HOME/lerobot_datasets/put_sockets_into_drawer_pointact --repo-type dataset
+huggingface-cli upload ${HF_USER}/put_socks_into_drawer_pointact $HOME/lerobot_datasets/put_socks_into_drawer_pointact --repo-type dataset
 huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact $HOME/lerobot_datasets/put_cube_in_spot_pointact --repo-type dataset
 huggingface-cli upload ${HF_USER}/put_banana_and_toy_in_plates_pointact $HOME/lerobot_datasets/put_banana_and_toy_in_plates_pointact --repo-type dataset
+huggingface-cli upload ${HF_USER}/stack_cups_pointact $HOME/lerobot_datasets/stack_cups_pointact --repo-type dataset
+huggingface-cli upload ${HF_USER}/open_microwave_pointact $HOME/lerobot_datasets/open_microwave_pointact --repo-type dataset
+huggingface-cli upload ${HF_USER}/open_microwave_pointact $HOME/lerobot_datasets/move_plates_from_rack_to_box --repo-type dataset
 ```
 
 ### Individual Steps (Manual)
@@ -55,7 +71,7 @@ python -m examples.post_process_dataset.convert_to_pointact_format --dataset_dir
 
 ### 11. Visualize PointAct dataset
 ```bash
-python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/put_sockets_into_drawer_pointact/ --episode_index=10 --pcd_frame=100
+python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/stack_cups_pointact/ --episode_index=10 --pcd_frame=100
 ```
 
 # 5. Replay episode
@@ -76,12 +92,9 @@ huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact $HOME/lerobot_datase
 lerobot-edit-dataset \
     --repo_id  /home/ppacaud/lerobot_datasets/pointact_3tasks \
     --operation.type merge \
-    --operation.repo_ids "['/home/ppacaud/lerobot_datasets/put_cube_in_spot_pointact', '/home/ppacaud/lerobot_datasets/put_banana_and_toy_in_plates_pointact', '/home/ppacaud/lerobot_datasets/put_sockets_into_drawer_pointact']"
+    --operation.repo_ids "['/home/ppacaud/lerobot_datasets/put_cube_in_spot_pointact', '/home/ppacaud/lerobot_datasets/put_banana_and_toy_in_plates_pointact', '/home/ppacaud/lerobot_datasets/put_socks_into_drawer_pointact']"
 
 # Training
 
 # Train baselines on EEF pose 
 As we trim the datasets for pointact, we need to reuse the same data for training baselines, but in lerobot v3 format.
-```bash
-
-```
