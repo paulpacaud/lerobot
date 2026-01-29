@@ -46,7 +46,7 @@ POINTACT_FEATURES = {
         "names": {"motors": ["x", "y", "z", "axis_angle1", "axis_angle2", "axis_angle3", "gripper_openness"]},
     },
     # Action (joint space) - original joint commands for replay
-    "action.joints": {
+    "action.joints": { # the joint poses in the _pointact datasets are absolute values (in degrees). 
         "dtype": "float32",
         "shape": (6,),
         "names": {"motors": ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]},

@@ -8,7 +8,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=24
 #SBATCH --hint=nomultithread
-#SBATCH --time=15:00:00
+#SBATCH --time=10:00:00
 #SBATCH --output=slurm_logs/%j.out
 #SBATCH --error=slurm_logs/%j.out
 
@@ -77,8 +77,8 @@ python src/lerobot/scripts/lerobot_train.py \
     --policy.tune_projector=true \
     --policy.tune_diffusion_model=true \
     --policy.use_bf16=true \
-    --steps=20000 \
-    --save_freq=2000 \
+    --steps=10000 \
+    --save_freq=2500 \
     --batch_size=32 \
     --num_workers=12 \
     --wandb.enable=true \

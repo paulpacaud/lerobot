@@ -18,18 +18,34 @@ huggingface-cli download paulpacaud/put_socks_into_drawer \
   --local-dir put_socks_into_drawer \
   --local-dir-use-symlinks False
 
+huggingface-cli download paulpacaud/stack_cups \
+  --repo-type dataset \
+  --local-dir stack_cups \
+  --local-dir-use-symlinks False
+
+huggingface-cli download paulpacaud/open_microwave \
+  --repo-type dataset \
+  --local-dir open_microwave \
+  --local-dir-use-symlinks False
+
 huggingface-cli upload paulpacaud/move_plates_from_rack_to_box $HOME/lerobot_datasets/move_plates_from_rack_to_box --repo-type dataset
 
 ### Full Pipeline
 
 ```bash
-python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_sockets_into_drawer --output_dir=$HOME/lerobot_datasets/put_sockets_into_drawer_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_socks_into_drawer --output_dir=$HOME/lerobot_datasets/put_socks_into_drawer_pointact
 python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_cube_in_spot --output_dir=$HOME/lerobot_datasets/put_cube_in_spot_pointact
 python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/put_banana_and_toy_in_plates --output_dir=$HOME/lerobot_datasets/put_banana_and_toy_in_plates_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/stack_cups --output_dir=$HOME/lerobot_datasets/stack_cups_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/open_microwave --output_dir=$HOME/lerobot_datasets/open_microwave_pointact
+python -m examples.post_process_dataset.run_full_pipeline --input_dir=$HOME/lerobot_datasets/move_plates_from_rack_to_box/ --output_dir=$HOME/lerobot_datasets/move_plates_from_rack_to_box_pointact
 
-huggingface-cli upload ${HF_USER}/put_sockets_into_drawer_pointact $HOME/lerobot_datasets/put_sockets_into_drawer_pointact --repo-type dataset
+huggingface-cli upload ${HF_USER}/put_socks_into_drawer_pointact $HOME/lerobot_datasets/put_socks_into_drawer_pointact --repo-type dataset
 huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact $HOME/lerobot_datasets/put_cube_in_spot_pointact --repo-type dataset
 huggingface-cli upload ${HF_USER}/put_banana_and_toy_in_plates_pointact $HOME/lerobot_datasets/put_banana_and_toy_in_plates_pointact --repo-type dataset
+huggingface-cli upload ${HF_USER}/stack_cups_pointact $HOME/lerobot_datasets/stack_cups_pointact --repo-type dataset
+huggingface-cli upload ${HF_USER}/open_microwave_pointact $HOME/lerobot_datasets/open_microwave_pointact --repo-type dataset
+huggingface-cli upload ${HF_USER}/open_microwave_pointact $HOME/lerobot_datasets/move_plates_from_rack_to_box --repo-type dataset
 ```
 
 ### Individual Steps (Manual)
@@ -78,7 +94,7 @@ huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact $HOME/lerobot_datase
 lerobot-edit-dataset \
     --repo_id  /home/ppacaud/lerobot_datasets/pointact_3tasks \
     --operation.type merge \
-    --operation.repo_ids "['/home/ppacaud/lerobot_datasets/put_cube_in_spot_pointact', '/home/ppacaud/lerobot_datasets/put_banana_and_toy_in_plates_pointact', '/home/ppacaud/lerobot_datasets/put_sockets_into_drawer_pointact']"
+    --operation.repo_ids "['/home/ppacaud/lerobot_datasets/put_cube_in_spot_pointact', '/home/ppacaud/lerobot_datasets/put_banana_and_toy_in_plates_pointact', '/home/ppacaud/lerobot_datasets/put_socks_into_drawer_pointact']"
 
 # Training
 
