@@ -1,5 +1,3 @@
-#!/bin/bash
-
 DATASETS=(
     "put_cube_in_spot"
     "stack_cups"
@@ -9,6 +7,6 @@ DATASETS=(
 )
 
 for dataset in "${DATASETS[@]}"; do
-    echo "Submitting job for dataset: $dataset"
-    sbatch --export=ALL,INPUT_DATASET="$dataset" jobs/preprocessing/run_full_pipeline.sh
+    echo "Submitting fix job for dataset: $dataset"
+    sbatch --export=ALL,INPUT_DATASET="$dataset" jobs/preprocessing/run_fix_pointact.sh
 done

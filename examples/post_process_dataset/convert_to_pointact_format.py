@@ -65,11 +65,11 @@ Input format (joint space):
     observation.point_cloud: LMDB point clouds
 
 Output format (PointAct):
-    observation.state: [x, y, z, axis_angle1, axis_angle2, axis_angle3, gripper_openness]
-    observation.states.ee_state: [x, y, z, axis_angle1, axis_angle2, axis_angle3]
+    observation.state: [x, y, z, qw, qx, qy, qz, gripper_openness]
+    observation.states.ee_state: [x, y, z, qw, qx, qy, qz]
     observation.states.joint_state: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
     observation.states.gripper_state: [gripper_openness]
-    action: [x, y, z, axis_angle1, axis_angle2, axis_angle3, gripper_openness]
+    action: [x, y, z, qw, qx, qy, qz, gripper_openness]
     observation.images.front_image: video (256, 256, 3)
     observation.points.frontview: point cloud
 
@@ -132,6 +132,9 @@ class Args(Tap):
     trim_threshold_factor: float = 0.05  # Threshold = median(deltas) * this factor
     min_idle_segment: int = 5  # Minimum consecutive idle frames to consider for removal
     keep_frames_per_idle: int = 1  # Number of frames to keep from each internal idle segment
+
+    # Depth preservation
+    include_depth: bool = False  # Preserve depth images in the output dataset (dropped by default)
 
     # Data keys (input)
     state_key: str = "observation.state"
@@ -209,6 +212,7 @@ def regenerate_stats(
     output_joint_state_key: str,
     output_gripper_state_key: str,
     output_joint_action_key: str,
+    include_depth: bool = False,
 ) -> None:
     """Regenerate stats.json to match the new feature definitions after conversion.
 
@@ -225,7 +229,7 @@ def regenerate_stats(
     stats = load_stats(dataset_path)
 
     # Remove stats for deleted features
-    if depth_key in stats:
+    if not include_depth and depth_key in stats:
         del stats[depth_key]
         logging.info(f"  Removed stats for deleted feature: {depth_key}")
 
@@ -237,6 +241,13 @@ def regenerate_stats(
     if point_cloud_key in stats and point_cloud_key != output_point_cloud_key:
         stats[output_point_cloud_key] = stats.pop(point_cloud_key)
         logging.info(f"  Renamed stats key: {point_cloud_key} -> {output_point_cloud_key}")
+
+    # Remove old metadata stats so they get recomputed with correct counts
+    METADATA_FIELDS = ["index", "timestamp", "episode_index", "frame_index", "task_index"]
+    for field in METADATA_FIELDS:
+        if field in stats:
+            del stats[field]
+            logging.info(f"  Removing old stats for metadata field: {field} (will recompute)")
 
     # Collect all data from parquet files for computing new stats
     logging.info("  Reading parquet files to compute new stats...")
@@ -251,6 +262,11 @@ def regenerate_stats(
         output_joint_state_key: [],
         output_gripper_state_key: [],
         output_joint_action_key: [],
+        "index": [],
+        "timestamp": [],
+        "episode_index": [],
+        "frame_index": [],
+        "task_index": [],
     }
 
     for parquet_path in tqdm(parquet_files, desc="  Reading parquet files"):
@@ -479,19 +495,19 @@ def joints_to_ee(
     translation_offset: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Convert joint positions to end-effector pose.
+    Convert joint positions to end-effector pose using quaternion orientation.
 
     Args:
         joint_values: Array of shape (6,) with joint positions
                      [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
         kinematics: RobotKinematics instance
-        rotation_class: Rotation class for converting rotation matrix to rotation vector
+        rotation_class: Rotation class for converting rotation matrix to quaternion
         translation_offset: Optional (3,) array with [tx, ty, tz]
 
     Returns:
         Tuple of:
-            - ee_pose: Array of shape (6,) with [x, y, z, rx, ry, rz]
-            - ee_pose_with_gripper: Array of shape (7,) with [x, y, z, rx, ry, rz, gripper]
+            - ee_pose: Array of shape (7,) with [x, y, z, qw, qx, qy, qz]
+            - ee_pose_with_gripper: Array of shape (8,) with [x, y, z, qw, qx, qy, qz, gripper]
     """
     arm_joints = joint_values[:5].astype(np.float64)
     gripper_pos = float(joint_values[5])
@@ -502,9 +518,15 @@ def joints_to_ee(
     if translation_offset is not None:
         position = position + translation_offset
 
-    rotation_vec = rotation_class.from_matrix(T[:3, :3]).as_rotvec()
+    # as_quat() returns [x, y, z, w], reorder to [w, x, y, z]
+    quat_xyzw = rotation_class.from_matrix(T[:3, :3]).as_quat()
+    quat_wxyz = np.array([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]])
 
-    ee_pose = np.concatenate([position, rotation_vec]).astype(np.float32)
+    # Enforce canonical form: qw >= 0
+    if quat_wxyz[0] < 0:
+        quat_wxyz = -quat_wxyz
+
+    ee_pose = np.concatenate([position, quat_wxyz]).astype(np.float32)
     ee_pose_with_gripper = np.concatenate([ee_pose, [gripper_pos]]).astype(np.float32)
 
     return ee_pose, ee_pose_with_gripper
@@ -529,6 +551,49 @@ def resize_image_bytes(image_bytes: bytes, target_size: int) -> bytes:
     buffer = io.BytesIO()
     img_resized.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def resize_parquet_depth_images(parquet_path: Path, depth_key: str, target_size: int) -> int:
+    """Resize depth images stored as image columns in a parquet file.
+
+    Depth images stored in parquet have struct<bytes, path> format.
+    This reads each image, resizes it, and writes it back.
+
+    Args:
+        parquet_path: Path to the parquet file
+        depth_key: Column name for depth images
+        target_size: Target square size
+
+    Returns:
+        Number of images resized
+    """
+    df = pd.read_parquet(parquet_path)
+    if depth_key not in df.columns:
+        return 0
+
+    resized_count = 0
+    new_depth_entries = []
+
+    for entry in df[depth_key]:
+        if entry is None:
+            new_depth_entries.append(entry)
+            continue
+
+        # Handle struct<bytes, path> format
+        if isinstance(entry, dict) and "bytes" in entry:
+            image_bytes = entry["bytes"]
+            resized_bytes = resize_image_bytes(image_bytes, target_size)
+            new_entry = {**entry, "bytes": resized_bytes}
+            new_depth_entries.append(new_entry)
+            resized_count += 1
+        else:
+            new_depth_entries.append(entry)
+
+    df[depth_key] = new_depth_entries
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    pq.write_table(table, parquet_path)
+
+    return resized_count
 
 
 def resize_and_trim_video_file(
@@ -691,6 +756,7 @@ def convert_to_pointact_format(
     output_joint_state_key: str = "observation.states.joint_state",
     output_gripper_state_key: str = "observation.states.gripper_state",
     output_joint_action_key: str = "action.joints",
+    include_depth: bool = False,
 ) -> None:
     """
     Convert a LeRobot dataset to PointAct format.
@@ -709,9 +775,10 @@ def convert_to_pointact_format(
         state_key: Input state key
         action_key: Input action key
         rgb_key: Input RGB image key
-        depth_key: Input depth image key (will be removed)
+        depth_key: Input depth image key
         point_cloud_key: Input point cloud key
         output_*: Output key names
+        include_depth: If True, preserve depth images (resized and trimmed). Dropped by default.
     """
     try:
         from lerobot.model.kinematics import RobotKinematics
@@ -735,6 +802,7 @@ def convert_to_pointact_format(
     logging.info(f"Joint names: {joint_names}")
     logging.info(f"Translation offset: [{ROBOT_FRAME['tx']}, {ROBOT_FRAME['ty']}, {ROBOT_FRAME['tz']}]")
     logging.info(f"Target image size: {image_size}x{image_size}")
+    logging.info(f"Include depth: {include_depth}")
     logging.info(f"Trim idle frames: {trim_idle_frames}")
     if trim_idle_frames:
         logging.info(f"Trim threshold factor: {trim_threshold_factor}")
@@ -768,20 +836,21 @@ def convert_to_pointact_format(
     logging.info(f"Dataset version: {version}")
     logging.info(f"Total frames: {info.get('total_frames', 'unknown')}")
 
-    # Remove depth video directory if it exists
-    logging.info("Removing depth images...")
     videos_dir = dataset_path / "videos"
-    if videos_dir.exists():
-        for chunk_dir in sorted(videos_dir.glob("chunk-*")):
-            depth_video_dir = chunk_dir / depth_key
-            if depth_video_dir.exists():
-                logging.info(f"Removing {depth_video_dir}")
-                shutil.rmtree(depth_video_dir)
+    if not include_depth:
+        # Remove depth video directory if it exists
+        logging.info("Removing depth images...")
+        if videos_dir.exists():
+            for chunk_dir in sorted(videos_dir.glob("chunk-*")):
+                depth_video_dir = chunk_dir / depth_key
+                if depth_video_dir.exists():
+                    logging.info(f"Removing {depth_video_dir}")
+                    shutil.rmtree(depth_video_dir)
 
-    # Remove depth feature from info.json
-    if depth_key in info.get("features", {}):
-        logging.info(f"Removing feature: {depth_key}")
-        del info["features"][depth_key]
+        # Remove depth feature from info.json
+        if depth_key in info.get("features", {}):
+            logging.info(f"Removing feature: {depth_key}")
+            del info["features"][depth_key]
 
     # Get parquet files
     parquet_files = get_parquet_files(dataset_path)
@@ -970,7 +1039,7 @@ def convert_to_pointact_format(
         trimmed_df = ep_df.iloc[frames_to_keep].copy()
 
         # Drop depth column if present (we removed the video files, now remove from parquet)
-        if depth_key in trimmed_df.columns:
+        if not include_depth and depth_key in trimmed_df.columns:
             trimmed_df = trimmed_df.drop(columns=[depth_key])
 
         # Drop original RGB key if present (renamed to output_image_key, stored as video)
@@ -992,6 +1061,15 @@ def convert_to_pointact_format(
         pq.write_table(table, parquet_path)
 
     logging.info(f"Written {total_frames_written} frames total")
+
+    # Resize depth images stored in parquet files (if preserving depth)
+    if include_depth:
+        logging.info("Resizing depth images in parquet files...")
+        total_depth_resized = 0
+        for parquet_path in tqdm(parquet_files, desc="Resizing depth in parquet"):
+            resized = resize_parquet_depth_images(parquet_path, depth_key, image_size)
+            total_depth_resized += resized
+        logging.info(f"Resized {total_depth_resized} depth images in parquet files")
 
     # Update episode metadata
     logging.info("Updating episode metadata...")
@@ -1038,6 +1116,31 @@ def convert_to_pointact_format(
                 # Remove old videos
                 shutil.rmtree(rgb_video_dir)
 
+    # Resize and trim depth videos if preserving depth
+    if include_depth and videos_dir.exists():
+        logging.info("Resizing and trimming depth videos...")
+        for chunk_dir in sorted(videos_dir.glob("chunk-*")):
+            depth_video_dir = chunk_dir / depth_key
+            if depth_video_dir.exists():
+                for video_file in sorted(depth_video_dir.glob("*.mp4")):
+                    video_name = video_file.stem
+                    ep_idx = int(video_name.split("_")[1]) if video_name.startswith("episode_") else None
+
+                    temp_output = video_file.with_suffix(".tmp.mp4")
+                    if ep_idx is not None and ep_idx in episode_frames_to_keep:
+                        frames_to_keep, original_length, trim_info = episode_frames_to_keep[ep_idx]
+                        logging.info(
+                            f"Resizing and trimming depth {video_file.name} "
+                            f"(keeping {len(frames_to_keep)} of {original_length} frames)..."
+                        )
+                        resize_and_trim_video_file(video_file, temp_output, image_size, frames_to_keep)
+                    else:
+                        logging.info(f"Resizing depth {video_file.name}...")
+                        resize_and_trim_video_file(video_file, temp_output, image_size)
+
+                    # Replace original with resized/trimmed version
+                    temp_output.rename(video_file)
+
     # Trim LMDB point clouds if they exist
     lmdb_path = dataset_path / "point_clouds"
     if lmdb_path.exists() and trim_idle_frames:
@@ -1049,26 +1152,26 @@ def convert_to_pointact_format(
         trim_lmdb_point_clouds(lmdb_path, lmdb_trim_data)
 
     # Update info.json with new feature definitions
-    ee_names = ["x", "y", "z", "axis_angle1", "axis_angle2", "axis_angle3"]
-    state_names = ["x", "y", "z", "axis_angle1", "axis_angle2", "axis_angle3", "gripper_openness"]
+    ee_names = ["x", "y", "z", "qw", "qx", "qy", "qz"]
+    state_names = ["x", "y", "z", "qw", "qx", "qy", "qz", "gripper_openness"]
 
     # Update state and action features
     info["features"][state_key] = {
         "dtype": "float32",
-        "shape": [7],
+        "shape": [8],
         "names": {"motors": state_names},
     }
 
     info["features"][action_key] = {
         "dtype": "float32",
-        "shape": [7],
+        "shape": [8],
         "names": {"motors": state_names},
     }
 
     # Add new state features
     info["features"][output_ee_state_key] = {
         "dtype": "float32",
-        "shape": [6],
+        "shape": [7],
         "names": {"motors": ee_names},
     }
 
@@ -1100,6 +1203,13 @@ def convert_to_pointact_format(
             "shape": [image_size, image_size, 3],
             "names": ["height", "width", "rgb"],
         }
+
+    # Update depth feature shape if preserving depth
+    if include_depth and depth_key in info.get("features", {}):
+        depth_feature = info["features"][depth_key]
+        if "shape" in depth_feature and len(depth_feature["shape"]) >= 2:
+            depth_feature["shape"][0] = image_size
+            depth_feature["shape"][1] = image_size
 
     # Update point cloud feature
     if point_cloud_key in info["features"]:
@@ -1141,13 +1251,14 @@ def convert_to_pointact_format(
         output_joint_state_key=output_joint_state_key,
         output_gripper_state_key=output_gripper_state_key,
         output_joint_action_key=output_joint_action_key,
+        include_depth=include_depth,
     )
 
     logging.info("Conversion to PointAct format complete!")
     logging.info("Output features:")
-    logging.info(f"  {state_key}: shape [7], {state_names}")
-    logging.info(f"  {action_key}: shape [7], {state_names}")
-    logging.info(f"  {output_ee_state_key}: shape [6], {ee_names}")
+    logging.info(f"  {state_key}: shape [8], {state_names}")
+    logging.info(f"  {action_key}: shape [8], {state_names}")
+    logging.info(f"  {output_ee_state_key}: shape [7], {ee_names}")
     logging.info(f"  {output_joint_state_key}: shape [6], {joint_names + ['gripper']}")
     logging.info(f"  {output_joint_action_key}: shape [6], {joint_names + ['gripper']} (original joint commands)")
     logging.info(f"  {output_gripper_state_key}: shape [1], ['gripper_openness']")
@@ -1180,4 +1291,5 @@ if __name__ == "__main__":
         output_joint_state_key=args.output_joint_state_key,
         output_gripper_state_key=args.output_gripper_state_key,
         output_joint_action_key=args.output_joint_action_key,
+        include_depth=args.include_depth,
     )

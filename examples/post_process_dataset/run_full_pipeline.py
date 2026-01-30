@@ -81,6 +81,9 @@ class Args(Tap):
     rgb_key: str = "observation.images.front"
     depth_key: str = "observation.images.front_depth"
 
+    # Depth preservation
+    include_depth: bool = False  # Preserve depth images in the output dataset (dropped by default)
+
     # Keep intermediate v2 directory
     keep_intermediate: bool = False  # Keep the intermediate v2 directory
 
@@ -155,6 +158,7 @@ def run_pipeline(args: Args) -> None:
             rgb_key=args.rgb_key,
             depth_key=args.depth_key,
             point_cloud_key="observation.point_cloud",
+            include_depth=args.include_depth,
         )
 
         logging.info("=" * 60)

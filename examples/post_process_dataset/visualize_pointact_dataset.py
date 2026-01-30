@@ -1,16 +1,11 @@
-#!/usr/bin/env python
 """
 Visualize a PointAct format dataset.
 
-Shows the EE trajectory overlaid on the point cloud, with optional image display.
-The EE positions should already be in world frame (no additional transform needed).
+Shows the EE trajectory overlaid on the point cloud.
 
 Usage:
 ```bash
 python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/depth_test_pointact --episode_index=0 --pcd_frame=0
-
-# Interactive mode: click on points to see their coordinates
-python examples/post_process_dataset/visualize_pointact_dataset.py --dataset_dir=$HOME/lerobot_datasets/depth_test_pointact --episode_index=0 --pcd_frame=0 --interactive
 ```
 """
 
@@ -36,8 +31,6 @@ BACKGROUND_COLOR = np.array([1, 1, 1])
 SPHERE_RADIUS = 0.015
 AXES_SIZE = 0.1
 TRAJECTORY_COLOR = [1, 0, 0]  # Red
-
-# Color scheme for key frame markers (10 colors for trajectory progression)
 KEY_FRAME_COLORS = [
     [0, 1, 0],      # Green (start)
     [0, 0.5, 1],    # Cyan
@@ -224,7 +217,7 @@ def print_key_frame_info(ee_positions: np.ndarray, states: np.ndarray, joint_sta
             joint_str = ", ".join([f"{j:.2f}" for j in joints])
             print(f"  {color_name:8s} (Frame {frame_idx:4d}): pos={pos_str}, joints=[{joint_str}]")
         else:
-            gripper_val = states[frame_idx, 6] if states.shape[1] > 6 else 0
+            gripper_val = states[frame_idx, -1]
             print(f"  {color_name:8s} (Frame {frame_idx:4d}): pos={pos_str}, gripper={gripper_val:.2f}")
 
 

@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=poinact_conversion
-#SBATCH -A hjx@h100
-#SBATCH -C h100
-#SBATCH --qos=qos_gpu_h100-dev
+#SBATCH --job-name=reformat
+#SBATCH -A hjx@v100
+#SBATCH -C v100
+#SBATCH --qos=qos_gpu-dev
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=24
+#SBATCH --cpus-per-task=3
 #SBATCH --hint=nomultithread
 #SBATCH --time=2:00:00
 #SBATCH --output=slurm_logs/%j.out
@@ -28,6 +28,6 @@ source "$HOME/.bashrc"
 conda activate lerobot
 export PYTHONPATH="$(pwd):${PYTHONPATH}"
 
-INPUT_DATASET="${INPUT_DATASET:-put_socks_into_drawer}"
+INPUT_DATASET="${INPUT_DATASET:-put_cube_in_spot_pointact}"
 
-python -m examples.post_process_dataset.run_full_pipeline --input_dir="${SCRATCH}/data/lerobot/${INPUT_DATASET}" --output_dir="${SCRATCH}/data/lerobot/${INPUT_DATASET}_pointact_depth" --num_workers=10 --include_depth
+python -m examples.post_process_dataset.fix_pointact_data --dataset_dir=$SCRATCH/data/lerobot/${INPUT_DATASET}

@@ -45,7 +45,18 @@ huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact $HOME/lerobot_datase
 huggingface-cli upload ${HF_USER}/put_banana_and_toy_in_plates_pointact $HOME/lerobot_datasets/put_banana_and_toy_in_plates_pointact --repo-type dataset
 huggingface-cli upload ${HF_USER}/stack_cups_pointact $HOME/lerobot_datasets/stack_cups_pointact --repo-type dataset
 huggingface-cli upload ${HF_USER}/open_microwave_pointact $HOME/lerobot_datasets/open_microwave_pointact --repo-type dataset
-huggingface-cli upload ${HF_USER}/open_microwave_pointact $HOME/lerobot_datasets/move_plates_from_rack_to_box --repo-type dataset
+
+huggingface-cli upload ${HF_USER}/put_socks_into_drawer_pointact_v2 $SCRATCH/data/lerobot/put_socks_into_drawer_pointact_v2 --repo-type dataset
+huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact_v2 $SCRATCH/data/lerobot/put_cube_in_spot_pointact_v2 --repo-type dataset
+huggingface-cli upload ${HF_USER}/put_banana_and_toy_in_plates_pointact_v2 $SCRATCH/data/lerobot/put_banana_and_toy_in_plates_pointact_v2 --repo-type dataset
+huggingface-cli upload ${HF_USER}/stack_cups_pointact_v2 $SCRATCH/data/lerobot/stack_cups_pointact_v2 --repo-type dataset
+huggingface-cli upload ${HF_USER}/open_microwave_pointact_v2 $SCRATCH/data/lerobot/open_microwave_pointact_v2 --repo-type dataset
+
+huggingface-cli upload ${HF_USER}/put_socks_into_drawer_pointact_depth $SCRATCH/data/lerobot/put_socks_into_drawer_pointact_depth --repo-type dataset
+huggingface-cli upload ${HF_USER}/put_cube_in_spot_pointact_depth $SCRATCH/data/lerobot/put_cube_in_spot_pointact_depth --repo-type dataset
+huggingface-cli upload ${HF_USER}/put_banana_and_toy_in_plates_pointact_depth $SCRATCH/data/lerobot/put_banana_and_toy_in_plates_pointact_depth --repo-type dataset
+huggingface-cli upload ${HF_USER}/stack_cups_pointact_depth $SCRATCH/data/lerobot/stack_cups_pointact_depth --repo-type dataset
+huggingface-cli upload ${HF_USER}/open_microwave_pointact_depth $SCRATCH/data/lerobot/open_microwave_pointact_depth --repo-type dataset
 ```
 
 ### Individual Steps (Manual)

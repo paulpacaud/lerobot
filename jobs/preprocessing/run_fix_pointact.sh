@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=poinact_conversion
+#SBATCH --job-name=fix_pointact
 #SBATCH -A hjx@h100
 #SBATCH -C h100
 #SBATCH --qos=qos_gpu_h100-dev
@@ -30,4 +30,4 @@ export PYTHONPATH="$(pwd):${PYTHONPATH}"
 
 INPUT_DATASET="${INPUT_DATASET:-put_socks_into_drawer}"
 
-python -m examples.post_process_dataset.run_full_pipeline --input_dir="${SCRATCH}/data/lerobot/${INPUT_DATASET}" --output_dir="${SCRATCH}/data/lerobot/${INPUT_DATASET}_pointact_depth" --num_workers=10 --include_depth
+python -m examples.post_process_dataset.fix_existing_pointact_dataset --dataset_dir="${SCRATCH}/data/lerobot/${INPUT_DATASET}_pointact_depth"

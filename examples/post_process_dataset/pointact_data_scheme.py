@@ -5,6 +5,14 @@ POINTACT_FEATURES = {
         "shape": (256, 256, 3),
         "names": ["height", "width", "rgb"],
     },
+    # Depth image (resized)
+    "observation.images.front_depth": {
+        "dtype": "image",
+        "shape": (256, 256, 1),
+        "names": ["height", "width", "channel"],
+        "storage": "parquet",  # stored as struct<bytes, path> in parquet
+        "optional": True,
+    },
     # Point cloud
     "observation.points.frontview": {
         "dtype": "point_cloud",
@@ -18,14 +26,14 @@ POINTACT_FEATURES = {
     # State (EE pose + gripper) - actual measured/observed state at time t (what the robot is doing)
     "observation.state": {
         "dtype": "float32",
-        "shape": (7,),
-        "names": {"motors": ["x", "y", "z", "axis_angle1", "axis_angle2", "axis_angle3", "gripper_openness"]},
+        "shape": (8,),
+        "names": {"motors": ["x", "y", "z", "qw", "qx", "qy", "qz", "gripper_openness"]},
     },
     # EE state (position + orientation)
     "observation.states.ee_state": {
         "dtype": "float32",
-        "shape": (6,),
-        "names": {"motors": ["x", "y", "z", "axis_angle1", "axis_angle2", "axis_angle3"]},
+        "shape": (7,),
+        "names": {"motors": ["x", "y", "z", "qw", "qx", "qy", "qz"]},
     },
     # Joint state (all motors including gripper)
     "observation.states.joint_state": {
@@ -42,8 +50,8 @@ POINTACT_FEATURES = {
     # Action (EE space) - commanded/target action at time t (what the robot should do)
     "action": {
         "dtype": "float32",
-        "shape": (7,),
-        "names": {"motors": ["x", "y", "z", "axis_angle1", "axis_angle2", "axis_angle3", "gripper_openness"]},
+        "shape": (8,),
+        "names": {"motors": ["x", "y", "z", "qw", "qx", "qy", "qz", "gripper_openness"]},
     },
     # Action (joint space) - original joint commands for replay
     "action.joints": { # the joint poses in the _pointact datasets are absolute values (in degrees). 
